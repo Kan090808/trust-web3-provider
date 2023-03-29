@@ -23,6 +23,7 @@ public extension WKWebView {
 public extension TypeWrapper where T == WKWebView {
     func set(network: String, address: String) {
         let script = String(format: "trustwallet.\(network).setAddress(\"%@\");", address.lowercased())
+        print("set network: ", script)
         value.evaluateJavaScript(script)
     }
 
@@ -37,33 +38,39 @@ public extension TypeWrapper where T == WKWebView {
         };
         ethereum.setConfig(config);
         """
+        print("set config: ", script)
         value.evaluateJavaScript(script)
     }
 
     func emitChange(chainId: Int) {
         let string = "0x" + String(chainId, radix: 16)
         let script = String(format: "trustwallet.ethereum.emitChainChanged(\"%@\");", string)
+        print("emit change: ", script)
         value.evaluateJavaScript(script)
     }
 
     func send(network: ProviderNetwork, error: String, to id: Int64) {
         let script = String(format: "trustwallet.\(network.rawValue).sendError(%ld, \"%@\")", id, error)
+        print("send network: ", script)
         value.evaluateJavaScript(script)
     }
 
     func send(network: ProviderNetwork, result: String, to id: Int64) {
         let script = String(format: "trustwallet.\(network.rawValue).sendResponse(%ld, \'%@\')", id, result)
+        print("send network: ", script)
         value.evaluateJavaScript(script)
     }
 
     func sendNull(network: ProviderNetwork, id: Int64) {
         let script = String(format: "trustwallet.\(network.rawValue).sendResponse(%ld, null)", id)
+        print("send null network: ", script)
         value.evaluateJavaScript(script)
     }
 
     func send(network: ProviderNetwork, results: [String], to id: Int64) {
         let array = results.map { String(format: "\"%@\"", $0) }
         let script = String(format: "trustwallet.\(network.rawValue).sendResponse(%ld, [%@])", id, array.joined(separator: ","))
+        print("send network: ", script)
         value.evaluateJavaScript(script)
     }
 

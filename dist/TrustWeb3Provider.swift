@@ -55,7 +55,7 @@ public struct TrustWeb3Provider {
     }
 
     private class dummy {}
-    private let filename = "trust-min"    
+    private let filename = "trust-min"
     public static let scriptHandlerName = "_tw_"
     public let config: Config
 

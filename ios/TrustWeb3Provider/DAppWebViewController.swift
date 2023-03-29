@@ -20,12 +20,23 @@ class DAppWebViewController: UIViewController {
     @IBOutlet weak var urlField: UITextField!
 
     var homepage: String {
-        return "https://app.animeswap.org/#/?chain=aptos_devnet"
+//        return "https://app.animeswap.org/#/?chain=aptos_devnet"
+        return "https://staging.wellcomemax.cryptosports.one/" //下注網頁
+//        return "https://onboard.blocknative.com/examples/connect-wallet" //可以切換鏈
+//        return "https://fluttering-quark-ring.glitch.me/" //自己做的web3網頁
+//        return "https://web3modal.com/try-it-out"
     }
+    
+    var switchToCustomChainID = false
+    static var customChainID = 13370
+//    static var address = "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f"
+    static var address = "0xE513673FE758193EFb8aFd7765171cD70263736C"
+    static var customURL = "https://aminoxtestnet.node.alphacarbon.network/"
 
-    static let wallet = HDWallet(strength: 128, passphrase: "")!
+//    static let wallet = HDWallet(strength: 128, passphrase: "")!
+    static let wallet = HDWallet(mnemonic: "dance runway verify spawn recycle suit hamster weasel seminar alpha cliff roof", passphrase: "")!
 
-    var current: TrustWeb3Provider = TrustWeb3Provider(config: .init(ethereum: ethereumConfigs[0]))
+    var current: TrustWeb3Provider = TrustWeb3Provider(config: .init(ethereum: ethereumConfigs[0])) //預設provider config
 
     var providers: [Int: TrustWeb3Provider] = {
         var result = [Int: TrustWeb3Provider]()
@@ -37,34 +48,39 @@ class DAppWebViewController: UIViewController {
 
     static var ethereumConfigs = [
         TrustWeb3Provider.Config.EthereumConfig(
-            address: "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f",
+            address: address,
             chainId: 1,
             rpcUrl: "https://cloudflare-eth.com"
         ),
         TrustWeb3Provider.Config.EthereumConfig(
-            address: "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f",
+            address: address,
             chainId: 10,
             rpcUrl: "https://mainnet.optimism.io"
         ),
         TrustWeb3Provider.Config.EthereumConfig(
-            address: "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f",
+            address: address,
             chainId: 56,
             rpcUrl: "https://bsc-dataseed4.ninicoin.io"
         ),
         TrustWeb3Provider.Config.EthereumConfig(
-            address: "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f",
+            address: address,
             chainId: 137,
             rpcUrl: "https://polygon-rpc.com"
         ),
         TrustWeb3Provider.Config.EthereumConfig(
-            address: "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f",
+            address: address,
             chainId: 250,
             rpcUrl: "https://rpc.ftm.tools"
         ),
         TrustWeb3Provider.Config.EthereumConfig(
-            address: "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f",
+            address: address,
             chainId: 42161,
             rpcUrl: "https://arb1.arbitrum.io/rpc"
+        ),
+        TrustWeb3Provider.Config.EthereumConfig(
+            address: address,
+            chainId: customChainID,
+            rpcUrl: customURL
         )
     ]
 
@@ -78,6 +94,8 @@ class DAppWebViewController: UIViewController {
         controller.addUserScript(current.providerScript)
         controller.addUserScript(current.injectScript)
         controller.add(self, name: TrustWeb3Provider.scriptHandlerName)
+        print("injectScript:", current.injectScript.source)
+        print("scriptHandlerName:", TrustWeb3Provider.scriptHandlerName)
 
         config.userContentController = controller
         config.allowsInlineMediaPlayback = true
@@ -329,6 +347,7 @@ extension DAppWebViewController: WKScriptMessageHandler {
             switch network {
             case .ethereum:
                 let address = self.current.config.ethereum.address
+//                print("jayden test", network.rawValue)
                 webview?.tw.set(network: network.rawValue, address: address)
                 webview?.tw.send(network: network, results: [address], to: id)
             case .solana:
@@ -475,6 +494,11 @@ extension DAppWebViewController: WKScriptMessageHandler {
     }
 
     func handleSwitchEthereumChain(id: Int64, chainId: Int) {
+        var chainId = chainId
+        if switchToCustomChainID{
+            chainId = DAppWebViewController.customChainID
+        }
+        
         guard let provider = providers[chainId] else {
             alert(title: "Error", message: "Unknown chain id: \(chainId)")
             webview.tw.send(network: .ethereum, error: "Unknown chain id", to: id)
