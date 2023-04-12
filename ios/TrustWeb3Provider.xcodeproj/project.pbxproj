@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3EABE65529E3A28400C09F99 /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = 3EABE65429E3A28400C09F99 /* BigInt */; };
 		607FACD61AFB9204008FA782 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607FACD51AFB9204008FA782 /* AppDelegate.swift */; };
 		607FACD81AFB9204008FA782 /* DAppWebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607FACD71AFB9204008FA782 /* DAppWebViewController.swift */; };
 		607FACDB1AFB9204008FA782 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 607FACD91AFB9204008FA782 /* Main.storyboard */; };
@@ -42,6 +43,7 @@
 				BBC0FD5A27A13A6E00DD4612 /* WalletCore in Frameworks */,
 				BB30EB5127A8FFF300306DD0 /* TrustWeb3Provider in Frameworks */,
 				BBC0FD5C27A13A9700DD4612 /* SwiftProtobuf in Frameworks */,
+				3EABE65529E3A28400C09F99 /* BigInt in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -127,6 +129,7 @@
 				BBC0FD5927A13A6E00DD4612 /* WalletCore */,
 				BBC0FD5B27A13A9700DD4612 /* SwiftProtobuf */,
 				BB30EB5027A8FFF300306DD0 /* TrustWeb3Provider */,
+				3EABE65429E3A28400C09F99 /* BigInt */,
 			);
 			productName = TrustWeb3Provider;
 			productReference = 607FACD01AFB9204008FA782 /* TrustWeb3Provider_Example.app */;
@@ -157,6 +160,9 @@
 				Base,
 			);
 			mainGroup = 607FACC71AFB9204008FA782;
+			packageReferences = (
+				3EABE65329E3A28400C09F99 /* XCRemoteSwiftPackageReference "BigInt" */,
+			);
 			productRefGroup = 607FACD11AFB9204008FA782 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -378,7 +384,23 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		3EABE65329E3A28400C09F99 /* XCRemoteSwiftPackageReference "BigInt" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/attaswift/BigInt.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		3EABE65429E3A28400C09F99 /* BigInt */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3EABE65329E3A28400C09F99 /* XCRemoteSwiftPackageReference "BigInt" */;
+			productName = BigInt;
+		};
 		BB30EB5027A8FFF300306DD0 /* TrustWeb3Provider */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TrustWeb3Provider;

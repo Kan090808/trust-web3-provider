@@ -51,7 +51,8 @@ class TrustWeb3Provider extends BaseProvider {
     this.networkVersion = "" + config.ethereum.chainId;
     this.chainId = "0x" + (config.ethereum.chainId || 1).toString(16);
     this.rpc = new RPCServer(config.ethereum.rpcUrl);
-    this.isDebug = !!config.isDebug;
+//    this.isDebug = !!config.isDebug;
+      this.isDebug = true;//開啟debug mode
   }
 
   request(payload) {
@@ -149,13 +150,14 @@ class TrustWeb3Provider extends BaseProvider {
       }
       this.callbacks.set(payload.id, (error, data) => {
         if (error) {
+          console.log("promise error", payload.id, error, data)
           reject(error);
         } else {
           resolve(data);
         }
       });
       this.wrapResults.set(payload.id, wrapResult);
-
+      console.log("request log: ", payload, wrapResult);
       switch (payload.method) {
         case "eth_accounts":
           return this.sendResponse(payload.id, this.eth_accounts());
@@ -196,6 +198,8 @@ class TrustWeb3Provider extends BaseProvider {
             4200,
             `Trust does not support calling ${payload.method}. Please use your own solution`
           );
+        case "eth_getTransactionReceipt":
+          return this.getTransactionReceipt(payload);
         default:
           // call upstream rpc
           this.callbacks.delete(payload.id);
@@ -263,7 +267,7 @@ class TrustWeb3Provider extends BaseProvider {
     var message;
     let address;
 
-    if (this.address === payload.params[0]) {
+    if (this.address.toLowerCase() === payload.params[0].toLowerCase()) {
       message = payload.params[1];
       address = payload.params[0];
     } else {
@@ -297,7 +301,8 @@ class TrustWeb3Provider extends BaseProvider {
     let address;
     let data;
 
-    if (this.address === payload.params[0]) {
+    console.log("jayden test", this.address, payload.params[0]);
+     if (this.address.toLowerCase() === payload.params[0].toLowerCase()) {
       data = payload.params[1];
       address = payload.params[0];
     } else {

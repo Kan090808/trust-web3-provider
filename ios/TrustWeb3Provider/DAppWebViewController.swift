@@ -8,6 +8,7 @@ import UIKit
 import WebKit
 import WalletCore
 import TrustWeb3Provider
+import BigInt
 
 extension TrustWeb3Provider {
     static func createEthereum(address: String, chainId: Int, rpcUrl: String) -> TrustWeb3Provider {
@@ -36,7 +37,7 @@ class DAppWebViewController: UIViewController {
 //    static let wallet = HDWallet(strength: 128, passphrase: "")!
     static let wallet = HDWallet(mnemonic: "dance runway verify spawn recycle suit hamster weasel seminar alpha cliff roof", passphrase: "")!
 
-    var current: TrustWeb3Provider = TrustWeb3Provider(config: .init(ethereum: ethereumConfigs[0])) //預設provider config
+    var current: TrustWeb3Provider = TrustWeb3Provider(config: .init(ethereum: ethereumConfigs[6])) //預設provider config
 
     var providers: [Int: TrustWeb3Provider] = {
         var result = [Int: TrustWeb3Provider]()
@@ -180,6 +181,35 @@ extension DAppWebViewController: WKScriptMessageHandler {
             handleRequestAccounts(network: network, id: id)
         case .signTransaction:
             switch network {
+//            case .ethereum:
+//                let secretPrivateKeyEth = Self.wallet.getKeyForCoin(coin: .ethereum)
+//                guard let object = json["object"] as? [String: Any] else {return}
+//                let signerInput = EthereumSigningInput.with {
+//                    let str = "13370"
+//                    let data = Data(str.utf8)
+//                    let hexString = data.map{ String(format:"%02x", $0) }.joined()
+//                    $0.chainID = Data(hexString: hexString)!
+//                    $0.gasPrice = BigInt(3600000000).magnitude.serialize()
+//                    $0.gasLimit = BigInt(21000).magnitude.serialize()
+//                    $0.toAddress = object["to"] as! String
+//
+//                    $0.transaction = EthereumTransaction.with {
+//                        $0.transfer = EthereumTransaction.Transfer.with {
+//                            $0.amount = BigInt(1).magnitude.serialize()
+//                        }
+//                    }
+//                    $0.privateKey = secretPrivateKeyEth.data
+//                }
+//                print("signerInput:", signerInput.debugDescription)
+//                handleSignTransaction(network: .ethereum, id: json["id"]! as! Int64) { [weak webview] in
+//                    let output: EthereumSigningOutput = AnySigner.sign(input: signerInput, coin: .ethereum)
+//                    print("Signed transaction:")
+//                    print(" encoded:   ", output.encoded.hexString)
+//                    print(" data:   ", output.data.hexString)
+//                    webview?.tw.send(network: network, result: output.encoded.hexString, to: id)
+//                }
+//
+//                break
             case .cosmos:
                 let input: CosmosSigningInput
                 if let params = json["object"] as? [String: Any] {
@@ -210,9 +240,9 @@ extension DAppWebViewController: WKScriptMessageHandler {
                         }
                     }
                 }
-            default: break
+            default:
+                break
             }
-
 
         case .signRawTransaction:
             switch network {
@@ -347,7 +377,7 @@ extension DAppWebViewController: WKScriptMessageHandler {
             switch network {
             case .ethereum:
                 let address = self.current.config.ethereum.address
-//                print("jayden test", network.rawValue)
+                print("jayden test", network.rawValue, self.current.config.ethereum.chainId)
                 webview?.tw.set(network: network.rawValue, address: address)
                 webview?.tw.send(network: network, results: [address], to: id)
             case .solana:
@@ -494,6 +524,7 @@ extension DAppWebViewController: WKScriptMessageHandler {
     }
 
     func handleSwitchEthereumChain(id: Int64, chainId: Int) {
+        
         var chainId = chainId
         if switchToCustomChainID{
             chainId = DAppWebViewController.customChainID
@@ -504,10 +535,10 @@ extension DAppWebViewController: WKScriptMessageHandler {
             webview.tw.send(network: .ethereum, error: "Unknown chain id", to: id)
             return
         }
-
+        
         let currentConfig = current.config.ethereum
         let switchToConfig = provider.config.ethereum
-
+        print("jayden test", chainId, provider.config.ethereum.chainId)
         if chainId == currentConfig.chainId {
             print("No need to switch, already on chain \(chainId)")
             webview.tw.sendNull(network: .ethereum, id: id)
@@ -523,11 +554,13 @@ extension DAppWebViewController: WKScriptMessageHandler {
             alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak self] _ in
                 guard let `self` = self else { return }
                 self.current = provider
+                print("jayden test", chainId, self.current.config.ethereum.chainId)
                 let provider = TrustWeb3Provider.createEthereum(
                     address: switchToConfig.address,
                     chainId: switchToConfig.chainId,
                     rpcUrl: switchToConfig.rpcUrl
                 )
+                print("jayden test", chainId, provider.config.ethereum.chainId)
                 self.webview.tw.set(config: provider.config)
                 self.webview.tw.emitChange(chainId: chainId)
                 self.webview.tw.sendNull(network: .ethereum, id: id)
