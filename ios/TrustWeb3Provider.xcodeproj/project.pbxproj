@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		38459A7729FBBA8A00C0E690 /* aethers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38459A7629FBBA8A00C0E690 /* aethers.swift */; };
+		38459A782A04992200C0E690 /* libaethers.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 38459A7329FBAF7D00C0E690 /* libaethers.a */; };
+		38459A792A04992C00C0E690 /* libaethers.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 38459A7529FBAF9A00C0E690 /* libaethers.a */; };
 		607FACD61AFB9204008FA782 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607FACD51AFB9204008FA782 /* AppDelegate.swift */; };
 		607FACD81AFB9204008FA782 /* DAppWebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607FACD71AFB9204008FA782 /* DAppWebViewController.swift */; };
 		607FACDB1AFB9204008FA782 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 607FACD91AFB9204008FA782 /* Main.storyboard */; };
@@ -20,6 +23,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		38459A7329FBAF7D00C0E690 /* libaethers.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libaethers.a; path = "lib/aarch64-apple-ios-sim/libaethers.a"; sourceTree = "<group>"; };
+		38459A7529FBAF9A00C0E690 /* libaethers.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libaethers.a; path = "lib/aarch64-apple-ios/libaethers.a"; sourceTree = "<group>"; };
+		38459A7629FBBA8A00C0E690 /* aethers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = aethers.swift; sourceTree = SOURCE_ROOT; };
 		607FACD01AFB9204008FA782 /* TrustWeb3Provider_Example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrustWeb3Provider_Example.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		607FACD41AFB9204008FA782 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		607FACD51AFB9204008FA782 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -41,6 +47,8 @@
 			files = (
 				BBC0FD5A27A13A6E00DD4612 /* WalletCore in Frameworks */,
 				BB30EB5127A8FFF300306DD0 /* TrustWeb3Provider in Frameworks */,
+				38459A792A04992C00C0E690 /* libaethers.a in Frameworks */,
+				38459A782A04992200C0E690 /* libaethers.a in Frameworks */,
 				BBC0FD5C27A13A9700DD4612 /* SwiftProtobuf in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -70,6 +78,7 @@
 		607FACD21AFB9204008FA782 /* Example */ = {
 			isa = PBXGroup;
 			children = (
+				38459A7629FBBA8A00C0E690 /* aethers.swift */,
 				607FACD51AFB9204008FA782 /* AppDelegate.swift */,
 				607FACD71AFB9204008FA782 /* DAppWebViewController.swift */,
 				BB544C0621B2381C00E8C525 /* DAppMethod.swift */,
@@ -103,6 +112,8 @@
 		BBC0FD5827A13A6E00DD4612 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				38459A7529FBAF9A00C0E690 /* libaethers.a */,
+				38459A7329FBAF7D00C0E690 /* libaethers.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -187,6 +198,7 @@
 				BB544C0721B2381C00E8C525 /* DAppMethod.swift in Sources */,
 				607FACD81AFB9204008FA782 /* DAppWebViewController.swift in Sources */,
 				BB544C0921B2402900E8C525 /* WKScriptMessage+JSON.swift in Sources */,
+				38459A7729FBBA8A00C0E690 /* aethers.swift in Sources */,
 				607FACD61AFB9204008FA782 /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -330,9 +342,23 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/lib/aarch64-apple-ios-sim",
+					"$(PROJECT_DIR)/lib/aarch64-apple-ios",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*][arch=arm64]" = (
+					"$(inherited)",
+					"./lib/aarch64-apple-ios",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = (
+					"$(inherited)",
+					"./lib/aarch64-apple-ios-sim",
+				);
 				MODULE_NAME = ExampleApp;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.demo.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "TW-bridging-header.h";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 5.0;
 			};
@@ -347,9 +373,23 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/lib/aarch64-apple-ios-sim",
+					"$(PROJECT_DIR)/lib/aarch64-apple-ios",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*][arch=arm64]" = (
+					"$(inherited)",
+					"./lib/aarch64-apple-ios",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = (
+					"$(inherited)",
+					"./lib/aarch64-apple-ios-sim",
+				);
 				MODULE_NAME = ExampleApp;
 				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.demo.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "TW-bridging-header.h";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 5.0;
 			};

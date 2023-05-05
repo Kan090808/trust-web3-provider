@@ -941,3 +941,6 @@ extension Data {
         task.resume()
     }
 }
+//# Helpful tools in swift that should be implemented somewhere
+//https://github.com/trustwallet/wallet-core/blob/master/swift/Sources/Extensions/Data%2BHex.swift
+//https://stackoverflow.com/questions/39075043/how-to-convert-data-to-hex-string-in-swift
