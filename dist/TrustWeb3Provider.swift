@@ -79,6 +79,7 @@ public struct TrustWeb3Provider {
         let source = """
         (function() {
             var config = {
+                isDebug: true,
                 ethereum: {
                     address: "\(config.ethereum.address)",
                     chainId: \(config.ethereum.chainId),

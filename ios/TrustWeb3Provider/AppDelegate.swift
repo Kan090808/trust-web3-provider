@@ -18,16 +18,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let provider = try! providerFromUrl(url: provider_url)
         let wallet = Wallet(password: "1234")
         let phrase = try! wallet.recoverPhrase(password: "1234")
-        print("new wallet phrase:", phrase)
+//        print("new wallet phrase:", phrase)
         let address = wallet.requestAccounts()
-        print("new wallet address:", address)
+//        print("new wallet address:", address)
         let encrypted = try! wallet.encryptJson()
-        print("encrypted wallet:\n", encrypted)
+//        print("encrypted wallet:\n", encrypted)
         let decrypted_wallet = try! decryptJson(encrypted: encrypted, password: "1234")
         let decrypted_address = decrypted_wallet.requestAccounts()
         assert(address == decrypted_address)
-        let nonce = try! wallet.sendTransaction(provider: provider, payload: "nothing")
-        print("nonce ", nonce)
 
         return true
     }

@@ -19,13 +19,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_aethers_bb0b_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_aethers_6695_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_aethers_bb0b_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_aethers_6695_rustbuffer_free(self, $0) }
     }
 }
 
@@ -348,7 +348,7 @@ public class ChainProvider: ChainProviderProtocol {
     }
 
     deinit {
-        try! rustCall { ffi_aethers_bb0b_ChainProvider_object_free(pointer, $0) }
+        try! rustCall { ffi_aethers_6695_ChainProvider_object_free(pointer, $0) }
     }
 
     
@@ -357,7 +357,7 @@ public class ChainProvider: ChainProviderProtocol {
     public func `sendTransaction`() throws {
         try
     rustCallWithError(FfiConverterTypeProviderError.self) {
-    aethers_bb0b_ChainProvider_send_transaction(self.pointer, $0
+    aethers_6695_ChainProvider_send_transaction(self.pointer, $0
     )
 }
     }
@@ -400,6 +400,7 @@ public protocol WalletProtocol {
     func `requestAccounts`()  -> [String]
     func `encryptJson`() throws -> String
     func `recoverPhrase`(`password`: String) throws -> String
+    func `signTypedMessage`(`message`: [UInt8]) throws -> String
     func `sendTransaction`(`provider`: ChainProvider, `payload`: String) throws -> String
     
 }
@@ -418,13 +419,13 @@ public class Wallet: WalletProtocol {
     
     rustCall() {
     
-    aethers_bb0b_Wallet_new(
+    aethers_6695_Wallet_new(
         FfiConverterString.lower(`password`), $0)
 })
     }
 
     deinit {
-        try! rustCall { ffi_aethers_bb0b_Wallet_object_free(pointer, $0) }
+        try! rustCall { ffi_aethers_6695_Wallet_object_free(pointer, $0) }
     }
 
     
@@ -435,7 +436,7 @@ public class Wallet: WalletProtocol {
             try!
     rustCall() {
     
-    aethers_bb0b_Wallet_request_accounts(self.pointer, $0
+    aethers_6695_Wallet_request_accounts(self.pointer, $0
     )
 }
         )
@@ -444,7 +445,7 @@ public class Wallet: WalletProtocol {
         return try FfiConverterString.lift(
             try
     rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_bb0b_Wallet_encrypt_json(self.pointer, $0
+    aethers_6695_Wallet_encrypt_json(self.pointer, $0
     )
 }
         )
@@ -453,8 +454,18 @@ public class Wallet: WalletProtocol {
         return try FfiConverterString.lift(
             try
     rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_bb0b_Wallet_recover_phrase(self.pointer, 
+    aethers_6695_Wallet_recover_phrase(self.pointer, 
         FfiConverterString.lower(`password`), $0
+    )
+}
+        )
+    }
+    public func `signTypedMessage`(`message`: [UInt8]) throws -> String {
+        return try FfiConverterString.lift(
+            try
+    rustCallWithError(FfiConverterTypeWalletError.self) {
+    aethers_6695_Wallet_sign_typed_message(self.pointer, 
+        FfiConverterSequenceUInt8.lower(`message`), $0
     )
 }
         )
@@ -462,8 +473,8 @@ public class Wallet: WalletProtocol {
     public func `sendTransaction`(`provider`: ChainProvider, `payload`: String) throws -> String {
         return try FfiConverterString.lift(
             try
-    rustCallWithError(FfiConverterTypeProviderError.self) {
-    aethers_bb0b_Wallet_send_transaction(self.pointer, 
+    rustCallWithError(FfiConverterTypeWalletError.self) {
+    aethers_6695_Wallet_send_transaction(self.pointer, 
         FfiConverterTypeChainProvider.lower(`provider`), 
         FfiConverterString.lower(`payload`), $0
     )
@@ -518,6 +529,9 @@ public enum ProviderError {
     // Simple error enums only carry a message
     case Inner(message: String)
     
+    // Simple error enums only carry a message
+    case FromAddressMissing(message: String)
+    
 }
 
 public struct FfiConverterTypeProviderError: FfiConverterRustBuffer {
@@ -542,6 +556,10 @@ public struct FfiConverterTypeProviderError: FfiConverterRustBuffer {
             message: try FfiConverterString.read(from: &buf)
         )
         
+        case 4: return .FromAddressMissing(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -561,6 +579,9 @@ public struct FfiConverterTypeProviderError: FfiConverterRustBuffer {
             FfiConverterString.write(message, into: &buf)
         case let .Inner(message):
             writeInt(&buf, Int32(3))
+            FfiConverterString.write(message, into: &buf)
+        case let .FromAddressMissing(message):
+            writeInt(&buf, Int32(4))
             FfiConverterString.write(message, into: &buf)
 
         
@@ -604,6 +625,12 @@ public enum WalletError {
     
     // Simple error enums only carry a message
     case EthSignature(message: String)
+    
+    // Simple error enums only carry a message
+    case Provider(message: String)
+    
+    // Simple error enums only carry a message
+    case InsufficientGasFunds(message: String)
     
 }
 
@@ -653,6 +680,14 @@ public struct FfiConverterTypeWalletError: FfiConverterRustBuffer {
             message: try FfiConverterString.read(from: &buf)
         )
         
+        case 10: return .Provider(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 11: return .InsufficientGasFunds(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -690,6 +725,12 @@ public struct FfiConverterTypeWalletError: FfiConverterRustBuffer {
             FfiConverterString.write(message, into: &buf)
         case let .EthSignature(message):
             writeInt(&buf, Int32(9))
+            FfiConverterString.write(message, into: &buf)
+        case let .Provider(message):
+            writeInt(&buf, Int32(10))
+            FfiConverterString.write(message, into: &buf)
+        case let .InsufficientGasFunds(message):
+            writeInt(&buf, Int32(11))
             FfiConverterString.write(message, into: &buf)
 
         
@@ -752,7 +793,7 @@ public func `ecRecover`(`signature`: [UInt8], `message`: [UInt8]) throws -> Stri
     
     rustCallWithError(FfiConverterTypeWalletError.self) {
     
-    aethers_bb0b_ec_recover(
+    aethers_6695_ec_recover(
         FfiConverterSequenceUInt8.lower(`signature`), 
         FfiConverterSequenceUInt8.lower(`message`), $0)
 }
@@ -767,8 +808,23 @@ public func `decryptJson`(`encrypted`: String, `password`: String) throws -> Wal
     
     rustCallWithError(FfiConverterTypeWalletError.self) {
     
-    aethers_bb0b_decrypt_json(
+    aethers_6695_decrypt_json(
         FfiConverterString.lower(`encrypted`), 
+        FfiConverterString.lower(`password`), $0)
+}
+    )
+}
+
+
+
+public func `fromMnemonic`(`mnemonic`: String, `password`: String) throws -> Wallet {
+    return try FfiConverterTypeWallet.lift(
+        try
+    
+    rustCallWithError(FfiConverterTypeWalletError.self) {
+    
+    aethers_6695_from_mnemonic(
+        FfiConverterString.lower(`mnemonic`), 
         FfiConverterString.lower(`password`), $0)
 }
     )
@@ -782,7 +838,7 @@ public func `providerFromUrl`(`url`: String) throws -> ChainProvider {
     
     rustCallWithError(FfiConverterTypeProviderError.self) {
     
-    aethers_bb0b_provider_from_url(
+    aethers_6695_provider_from_url(
         FfiConverterString.lower(`url`), $0)
 }
     )
