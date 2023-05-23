@@ -301,8 +301,7 @@ class TrustWeb3Provider extends BaseProvider {
     let address;
     let data;
 
-    console.log("jayden test", this.address, payload.params[0]);
-     if (this.address.toLowerCase() === payload.params[0].toLowerCase()) {
+    if (this.address.toLowerCase() === payload.params[0].toLowerCase()) {
       data = payload.params[1];
       address = payload.params[0];
     } else {

@@ -25,7 +25,8 @@ class DAppWebViewController: UIViewController {
     //#NOTE https://github.com/alpha-carbon/payments-contract
     //this is a demo project that can imitate an evm blockchain + smart contract interactions
     var homepage: String {
-        return "http://localhost:3000"
+//        return "http://localhost:3000"
+        return "https://staging.wellcomemax.cryptosports.one/"
         // return "https://app.animeswap.org/#/?chain=aptos_devnet"
     }
     
@@ -35,11 +36,11 @@ class DAppWebViewController: UIViewController {
     static var address = "0xE513673FE758193EFb8aFd7765171cD70263736C"
     static var customURL = "https://aminoxtestnet.node.alphacarbon.network/"
 
-    static let provider = try! fromMnemonic(mnemonic: "bottom drive obey lake curtain smoke basket hold race lonely fit walk", password: "1234")
+    static let wallet = try! fromMnemonic(mnemonic: "bottom drive obey lake curtain smoke basket hold race lonely fit walk", password: "1234")
 
-    static let wallet = HDWallet(strength: 128, passphrase: "")!
+//    static let wallet = HDWallet(strength: 128, passphrase: "")!
 
-    var current: TrustWeb3Provider = TrustWeb3Provider(config: .init(ethereum: ethereumConfigs[6])) //預設provider config
+    var current: TrustWeb3Provider = TrustWeb3Provider(config: .init(ethereum: ethereumConfigs[0])) //預設provider config
 
     var providers: [Int: TrustWeb3Provider] = {
         var result = [Int: TrustWeb3Provider]()
@@ -52,7 +53,12 @@ class DAppWebViewController: UIViewController {
 
     static var ethereumConfigs = [
         TrustWeb3Provider.Config.EthereumConfig(
-            address: provider.requestAccounts()[0],
+            address: wallet.requestAccounts()[0],
+            chainId: 13370,
+            rpcUrl: "https://aminoxtestnet.node.alphacarbon.network/"
+        ),
+        TrustWeb3Provider.Config.EthereumConfig(
+            address: wallet.requestAccounts()[0],
             chainId: 88888,
             rpcUrl: "http://localhost:9933"
         ),
@@ -222,35 +228,9 @@ extension DAppWebViewController: WKScriptMessageHandler {
 //
 //                break
             case .cosmos:
-                let input: CosmosSigningInput
-                if let params = json["object"] as? [String: Any] {
-                    input = self.cosmosSigningInputAmino(params: params)!
-                } else {
-                    fatalError("data is missing")
-                }
-                handleSignTransaction(network: network, id: id) { [weak webview] in
-                    let output: CosmosSigningOutput = AnySigner.sign(input: input, coin: self.cosmosCoin)
-                    guard let signature = self.cosmosSignature(from: input, output) else { return }
-                    webview?.tw.send(network: network, result: signature, to: id)
-                }
+                break;
             case .aptos:
-                if var params = extractAptosParams(json: json) {
-                    aptosSigningInput(params: params) { [weak self, webview] input in
-                        switch input {
-                        case .failure(let error):
-                            print(error.localizedDescription)
-                        case .success(let input):
-                            self?.handleSignTransaction(network: network, id: id) { [weak webview] in
-                                let output: AptosSigningOutput = AnySigner.sign(input: input, coin: .aptos)
-                                let signature = try! JSONSerialization.jsonObject(with: output.json.data(using: .utf8)!) as! [String: Any]
-                                params["signature"] = signature
-
-                                let data = try! JSONSerialization.data(withJSONObject: params, options: [.withoutEscapingSlashes])
-                                webview?.tw.send(network: network, result: data.hexString, to: id)
-                            }
-                        }
-                    }
-                }
+                break;
             case .ethereum:
                 // #NOTE there is a JS bug here where sendTransaction is sent to signTransaction.
                 // Currently the js isn't buildable for me so we will keep the
@@ -265,25 +245,9 @@ extension DAppWebViewController: WKScriptMessageHandler {
         case .signRawTransaction:
             switch network {
             case .solana:
-                guard let raw = extractRaw(json: json) else {
-                    print("raw json is missing")
-                    return
-                }
-
-                handleSignSolanaRawTransaction(id: id, raw: raw)
+                break;
             case .cosmos:
-                let input: CosmosSigningInput
-                if let params = json["object"] as? [String: Any] {
-                    input = self.cosmosSigningInputDirect(params: params)!
-                } else {
-                    fatalError("data is missing")
-                }
-
-                handleSignTransaction(network: network, id: id) { [weak webview] in
-                    let output: CosmosSigningOutput = AnySigner.sign(input: input, coin: self.cosmosCoin)
-                    guard let signature = self.cosmosSignature(from: input, output) else { return }
-                    webview?.tw.send(network: .cosmos, result: signature, to: id)
-                }
+                break;
             default:
                 print("\(network.rawValue) doesn't support signRawTransaction")
                 break
@@ -297,9 +261,9 @@ extension DAppWebViewController: WKScriptMessageHandler {
             case .ethereum:
                 handleSignMessage(id: id, data: data, addPrefix: false)
             case .solana, .aptos:
-                handleSignMessage(id: id, network: network, data: data)
+                break;
             case .cosmos:
-                handleCosmosSignMessage(id: id, data: data)
+                break;
             }
         case .signPersonalMessage:
             guard let data = extractMessage(json: json) else {
@@ -403,22 +367,24 @@ extension DAppWebViewController: WKScriptMessageHandler {
             case .solana:
                 let address = "H4JcMPicKkHcxxDjkyyrLoQj7Kcibd9t815ak4UvTr9M"
                 webview?.tw.send(network: network, results: [address], to: id)
-            case .cosmos:
-                let pubKey = Self.wallet.getKeyForCoin(coin: self.cosmosCoin).getPublicKeySecp256k1(compressed: true).description
-                let address = Self.wallet.getAddressForCoin(coin: self.cosmosCoin)
-                let json = try! JSONSerialization.data(
-                    withJSONObject: ["pubKey": pubKey, "address": address]
-                )
-                let jsonString = String(data: json, encoding: .utf8)!
-                webview?.tw.send(network: network, result: jsonString, to: id)
-            case .aptos:
-                let pubKey = Self.wallet.getKeyForCoin(coin: .aptos).getPublicKeySecp256k1(compressed: true).description
-                let address = Self.wallet.getAddressForCoin(coin: .aptos)
-                let json = try! JSONSerialization.data(
-                    withJSONObject: ["publicKey": pubKey, "address": address]
-                )
-                let jsonString = String(data: json, encoding: .utf8)!
-                webview?.tw.send(network: network, result: jsonString, to: id)
+//            case .cosmos:
+//                let pubKey = Self.wallet.getKeyForCoin(coin: self.cosmosCoin).getPublicKeySecp256k1(compressed: true).description
+//                let address = Self.wallet.getAddressForCoin(coin: self.cosmosCoin)
+//                let json = try! JSONSerialization.data(
+//                    withJSONObject: ["pubKey": pubKey, "address": address]
+//                )
+//                let jsonString = String(data: json, encoding: .utf8)!
+//                webview?.tw.send(network: network, result: jsonString, to: id)
+//            case .aptos:
+//                let pubKey = Self.wallet.getKeyForCoin(coin: .aptos).getPublicKeySecp256k1(compressed: true).description
+//                let address = Self.wallet.getAddressForCoin(coin: .aptos)
+//                let json = try! JSONSerialization.data(
+//                    withJSONObject: ["publicKey": pubKey, "address": address]
+//                )
+//                let jsonString = String(data: json, encoding: .utf8)!
+//                webview?.tw.send(network: network, result: jsonString, to: id)
+            default:
+                break
             }
 
         }))
@@ -435,8 +401,9 @@ extension DAppWebViewController: WKScriptMessageHandler {
             webview?.tw.send(network: .ethereum, error: "Canceled", to: id)
         }))
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak webview] _ in
-            let signed = self.signMessage(data: data, addPrefix: addPrefix)
-            webview?.tw.send(network: .ethereum, result: "0x" + signed.hexString, to: id)
+            let signed = try! Self.wallet.signTypedMessage(message: [UInt8](data))
+            print("typed message: ", signed)
+            webview?.tw.send(network: .ethereum, result: "0x" + signed, to: id)
         }))
         present(alert, animated: true, completion: nil)
     }
@@ -451,7 +418,7 @@ extension DAppWebViewController: WKScriptMessageHandler {
             webview?.tw.send(network: .ethereum, error: "Canceled", to: id)
         }))
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak webview] _ in
-            let signed = try! Self.provider.signTypedMessage(message: [UInt8](data))
+            let signed = try! Self.wallet.signTypedMessage(message: [UInt8](data))
             print("typed message: ", signed)
             webview?.tw.send(network: .ethereum, result: "0x" + signed, to: id)
             // let signed = self.signMessage(data: data, addPrefix: false)
@@ -470,27 +437,12 @@ extension DAppWebViewController: WKScriptMessageHandler {
             webview?.tw.send(network: .solana, error: "Canceled", to: id)
         }))
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak webview] _ in
-            let coin: CoinType = network == .solana ? .solana : .aptos
-            let signed = Self.wallet.getKeyForCoin(coin: coin).sign(digest: data, curve: .ed25519)!
-            webview?.tw.send(network: network, result: "0x" + signed.hexString, to: id)
-        }))
-        present(alert, animated: true, completion: nil)
-    }
-
-    func handleCosmosSignMessage(id: Int64, data: Data) {
-        let alert = UIAlertController(
-            title: "Sign Cosmos Message",
-            message: String(data: data, encoding: .utf8) ?? data.hexString,
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Cancel", style: .destructive, handler: { [weak webview] _ in
-            webview?.tw.send(network: .solana, error: "Canceled", to: id)
-        }))
-        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak webview] _ in
-            guard let input: CosmosSigningInput = self.cosmosSigningInputMessage(data: data) else { return }
-            let output: CosmosSigningOutput = AnySigner.sign(input: input, coin: self.cosmosCoin)
-            guard let signature = self.cosmosSignature(from: input, output) else { return }
-            webview?.tw.send(network: .cosmos, result: signature, to: id)
+//            let coin: CoinType = network == .solana ? .solana : .aptos
+//            let signed = Self.wallet.(coin: coin).sign(digest: data, curve: .ed25519)!
+//            webview?.tw.send(network: network, result: "0x" + signed.hexString, to: id)
+            let signed = try! Self.wallet.signTypedMessage(message: [UInt8](data))
+            print("typed message: ", signed)
+            webview?.tw.send(network: .ethereum, result: "0x" + signed, to: id)
         }))
         present(alert, animated: true, completion: nil)
     }
@@ -506,24 +458,6 @@ extension DAppWebViewController: WKScriptMessageHandler {
         }))
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { _ in
             onSign()
-        }))
-        present(alert, animated: true, completion: nil)
-    }
-
-    func handleSignSolanaRawTransaction(id: Int64, raw: String) {
-        let alert = UIAlertController(
-            title: "Sign Transaction",
-            message: raw,
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Cancel", style: .destructive, handler: { [weak webview] _ in
-            webview?.tw.send(network: .solana, error: "Canceled", to: id)
-        }))
-        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak webview] _ in
-            guard let decoded = Base58.decodeNoCheck(string: raw) else { return }
-            guard let signature = Self.wallet.getKeyForCoin(coin: .solana).sign(digest: decoded, curve: .ed25519) else { return }
-            let signatureEncoded = Base58.encodeNoCheck(data: signature)
-            webview?.tw.send(network: .solana, result: signatureEncoded, to: id)
         }))
         present(alert, animated: true, completion: nil)
     }
@@ -661,15 +595,20 @@ extension DAppWebViewController: WKScriptMessageHandler {
             webview?.tw.send(network: .ethereum, error: "Canceled", to: id)
         }))
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak webview] _ in
-            let provider_url = "http://localhost:9933"
-            let provider = try! providerFromUrl(url: provider_url)
-            // #HACK I have no idea how to get the raw body as a byte or string from the WKScriptMessage
-            // it seems like the body is already pre-parsed to a dictionary
-            // this re-serialization is easier than trying to create a matching object on all interfaces 
-            // (the TransactionRequest object)
-            let txHash = try! Self.provider.sendTransaction(provider: provider, payload: payload)
-            print("sent txHash", txHash)
-            webview?.tw.send(network: .ethereum, result: txHash, to: id)
+            let provider_url = self.current.config.ethereum.rpcUrl
+            if let provider = try? providerFromUrl(url: provider_url){
+                // #HACK I have no idea how to get the raw body as a byte or string from the WKScriptMessage
+                // it seems like the body is already pre-parsed to a dictionary
+                // this re-serialization is easier than trying to create a matching object on all interfaces
+                // (the TransactionRequest object)
+                do {
+                    let txHash = try Self.wallet.sendTransaction(provider: provider, payload: payload)
+                    print("sent txHash", txHash)
+                    webview?.tw.send(network: .ethereum, result: txHash, to: id)
+                } catch {
+                    print(error)
+                }
+            }
         }))
         present(alert, animated: true, completion: nil)
     }
@@ -789,28 +728,6 @@ extension DAppWebViewController: WKScriptMessageHandler {
         }
     }
 
-    private func extractAptosParams(json: [String: Any]) -> [String: Any]? {
-        guard let object = json["object"] as? [String: Any], let payload = object["data"] as? [String: Any] else {
-            return nil
-        }
-
-        return [
-            "expiration_timestamp_secs": "3664390082",
-            "gas_unit_price": "100",
-            "max_gas_amount": "3296766",
-            "payload": payload,
-            "sender": Self.wallet.getAddressForCoin(coin: .aptos),
-            "sequence_number": "34"
-        ]
-    }
-
-    private func signMessage(data: Data, addPrefix: Bool = true) -> Data {
-        let message = addPrefix ? Hash.keccak256(data: ethereumMessage(for: data)) : data
-        var signed = Self.wallet.getKeyForCoin(coin: .ethereum).sign(digest: message, curve: .secp256k1)!
-        signed[64] += 27
-        return signed
-    }
-
     private func ecRecover(signature: Data, message: Data) -> String? {
         let data = ethereumMessage(for: message)
         let hash = Hash.keccak256(data: data)
@@ -824,152 +741,6 @@ extension DAppWebViewController: WKScriptMessageHandler {
     private func ethereumMessage(for data: Data) -> Data {
         let prefix = "\u{19}Ethereum Signed Message:\n\(data.count)".data(using: .utf8)!
         return prefix + data
-    }
-
-    private func aptosSigningInput(params: [String: Any], completion: @escaping ((Result<AptosSigningInput, Error>) -> Void)) {
-        params.postRequest(to: URL(string: "https://fullnode.devnet.aptoslabs.com/v1/transactions/encode_submission")!) { (result: Result<Data, Error>) -> Void in
-            switch result {
-            case .failure(let error):
-                completion(.failure(error))
-            case .success(let data):
-                let input = AptosSigningInput.with {
-                    $0.anyEncoded = String(data: data, encoding: .utf8)!.replacingOccurrences(of: "\"", with: "")
-                    $0.privateKey = Self.wallet.getKeyForCoin(coin: .aptos).data
-                }
-                completion(.success(input))
-            }
-        }
-    }
-
-    private func cosmosSigningInputDirect(params: [String: Any]) -> CosmosSigningInput? {
-        guard let accountNumberStr = params["account_number"] as? String, let accountNumber = UInt64(accountNumberStr) else { return nil }
-        guard let chainID = params["chain_id"] as? String else { return nil }
-        guard let authInfoBytesHex = params["auth_info_bytes"] as? String else { return nil }
-        guard let authInfoBytes = Data(hexString: authInfoBytesHex) else { return nil }
-        guard let bodyBytesHex = params["body_bytes"] as? String else { return nil }
-        guard let bodyBytes = Data(hexString: bodyBytesHex) else { return nil }
-
-        return CosmosSigningInput.with {
-            $0.accountNumber = accountNumber
-            $0.chainID = chainID
-            $0.messages = [
-                CosmosMessage.with {
-                    $0.signDirectMessage = CosmosMessage.SignDirect.with {
-                        $0.authInfoBytes = authInfoBytes
-                        $0.bodyBytes = bodyBytes
-                    }
-                }
-            ]
-            $0.signingMode = .protobuf
-            $0.privateKey = Self.wallet.getKeyForCoin(coin: cosmosCoin).data
-        }
-    }
-
-    private func cosmosSigningInputAmino(params: [String: Any]) -> CosmosSigningInput? {
-        guard let accountNumberStr = params["account_number"] as? String, let accountNumber = UInt64(accountNumberStr) else { return nil }
-        guard let chainID = params["chain_id"] as? String else { return nil }
-        guard let fee = params["fee"] as? [String: Any] else { return nil }
-        guard let gasStr = fee["gas"] as? String, let gas = UInt64(gasStr) else { return nil }
-        guard let memo = params["memo"] as? String else { return nil }
-        guard let sequenceStr = params["sequence"] as? String, let sequence = UInt64(sequenceStr) else { return nil }
-        guard let msgs = params["msgs"] as? [[String: Any]] else { return nil }
-
-        guard let feeAmounts = fee["amount"] as? [[String: Any]] else {
-            return nil
-        }
-
-        return CosmosSigningInput.with {
-            $0.signingMode = .json
-            $0.accountNumber = accountNumber
-            $0.chainID = chainID
-            $0.memo = memo
-            $0.sequence = sequence
-            $0.messages = parseCosmosMessages(msgs)
-            $0.fee = CosmosFee.with {
-                $0.gas = gas
-                $0.amounts = parseCosmosAmounts(feeAmounts)
-            }
-            $0.privateKey = Self.wallet.getKeyForCoin(coin: cosmosCoin).data
-        }
-    }
-
-    private func cosmosSigningInputMessage(data: Data) -> CosmosSigningInput? {
-        let valueMap = [
-            "signer": Self.wallet.getAddressForCoin(coin: cosmosCoin),
-            "value": data.base64EncodedString()
-        ]
-        guard let valueEncoded = try? JSONSerialization.data(withJSONObject: valueMap) else { return nil }
-        guard let value = String(data: valueEncoded, encoding: .utf8) else { return nil }
-
-        return CosmosSigningInput.with {
-            $0.accountNumber = UInt64(0)
-            $0.chainID = ""
-            $0.memo = ""
-            $0.sequence = UInt64(0)
-            $0.messages = [
-                CosmosMessage.with {
-                    $0.rawJsonMessage = CosmosMessage.RawJSON.with {
-                        $0.type = "sign/MsgSignData"
-                        $0.value = value
-                    }
-                }
-            ]
-            $0.fee = CosmosFee.with {
-                $0.gas = UInt64(0)
-                $0.amounts = []
-            }
-            $0.privateKey = Self.wallet.getKeyForCoin(coin: cosmosCoin).data
-        }
-    }
-
-    private func parseCosmosAmounts(_ amounts: [[String: Any]]) -> [CosmosAmount] {
-        return amounts.compactMap { feeAmount -> CosmosAmount? in
-            guard
-                let amount = feeAmount["amount"] as? String,
-                let denom = feeAmount["denom"] as? String
-            else {
-                return nil
-            }
-            return CosmosAmount.with {
-                $0.amount = amount
-                $0.denom = denom
-            }
-        }
-    }
-
-    private func parseCosmosMessages(_ messages: [[String: Any]]) -> [CosmosMessage] {
-        messages.compactMap { params -> CosmosMessage? in
-            guard let type = params["type"] as? String else { return nil }
-            guard let value = params["value"] as? [String: Any] else { return nil }
-            guard
-                let data = try? JSONSerialization.data(withJSONObject: value, options: []),
-                let jsonString = String(data: data, encoding: .utf8)
-            else {
-                return nil
-            }
-
-            return CosmosMessage.with {
-                $0.rawJsonMessage = CosmosMessage.RawJSON.with {
-                    $0.type = type
-                    $0.value = jsonString
-                }
-            }
-        }
-    }
-
-    private func cosmosSignature(from input: CosmosSigningInput, _ output: CosmosSigningOutput) -> String? {
-        let pubkey = PrivateKey(data: input.privateKey)!.getPublicKeySecp256k1(compressed: true)
-        let signature: [String: Any] = [
-            "pub_key": [
-                "type": self.cosmosCoin == .nativeEvmos ? "ethermint/PubKeyEthSecp256k1" : "tendermint/PubKeySecp256k1", // Evmos might be different
-                "value": pubkey.data.base64EncodedString()
-            ],
-            "signature": output.signature.base64EncodedString()
-        ]
-        guard let signatureEncoded = try? JSONSerialization.data(withJSONObject: signature) else { return nil }
-        guard let signatureResult = String(data: signatureEncoded, encoding: .utf8) else { return nil }
-
-        return signatureResult
     }
 }
 
