@@ -4,6 +4,8 @@
 // terms governing use, modification, and redistribution, is contained in the
 // file LICENSE at the root of the source code distribution tree.
 
+// Some hidden helpers/extensions from trustwallet core
+// https://github.com/trustwallet/wallet-core/blob/master/swift/Sources/Extensions/Data%2BHex.swift
 import UIKit
 import WebKit
 import WalletCore
@@ -20,12 +22,11 @@ class DAppWebViewController: UIViewController {
 
     @IBOutlet weak var urlField: UITextField!
 
+    //#NOTE https://github.com/alpha-carbon/payments-contract
+    //this is a demo project that can imitate an evm blockchain + smart contract interactions
     var homepage: String {
-//        return "https://app.animeswap.org/#/?chain=aptos_devnet"
-        return "https://staging.wellcomemax.cryptosports.one/" //下注網頁
-//        return "https://onboard.blocknative.com/examples/connect-wallet" //可以切換鏈
-//        return "https://fluttering-quark-ring.glitch.me/" //自己做的web3網頁
-//        return "https://web3modal.com/try-it-out"
+        return "http://localhost:3000"
+        // return "https://app.animeswap.org/#/?chain=aptos_devnet"
     }
     
     var switchToCustomChainID = false
@@ -34,14 +35,16 @@ class DAppWebViewController: UIViewController {
     static var address = "0xE513673FE758193EFb8aFd7765171cD70263736C"
     static var customURL = "https://aminoxtestnet.node.alphacarbon.network/"
 
-//    static let wallet = HDWallet(strength: 128, passphrase: "")!
-    static let wallet = HDWallet(mnemonic: "dance runway verify spawn recycle suit hamster weasel seminar alpha cliff roof", passphrase: "")!
+    static let provider = try! fromMnemonic(mnemonic: "bottom drive obey lake curtain smoke basket hold race lonely fit walk", password: "1234")
+
+    static let wallet = HDWallet(strength: 128, passphrase: "")!
 
     var current: TrustWeb3Provider = TrustWeb3Provider(config: .init(ethereum: ethereumConfigs[6])) //預設provider config
 
     var providers: [Int: TrustWeb3Provider] = {
         var result = [Int: TrustWeb3Provider]()
         ethereumConfigs.forEach {
+            print("eth config", $0.chainId)
             result[$0.chainId] = TrustWeb3Provider(config: .init(ethereum: $0))
         }
         return result
@@ -49,7 +52,12 @@ class DAppWebViewController: UIViewController {
 
     static var ethereumConfigs = [
         TrustWeb3Provider.Config.EthereumConfig(
-            address: address,
+            address: provider.requestAccounts()[0],
+            chainId: 88888,
+            rpcUrl: "http://localhost:9933"
+        ),
+        TrustWeb3Provider.Config.EthereumConfig(
+            address: "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f",
             chainId: 1,
             rpcUrl: "https://cloudflare-eth.com"
         ),
@@ -104,6 +112,9 @@ class DAppWebViewController: UIViewController {
         let webview = WKWebView(frame: .zero, configuration: config)
         webview.translatesAutoresizingMaskIntoConstraints = false
         webview.uiDelegate = self
+        if #available(iOS 16.4, *) { 
+            webview.isInspectable = true
+        }
 
         return webview
     }()
@@ -240,8 +251,15 @@ extension DAppWebViewController: WKScriptMessageHandler {
                         }
                     }
                 }
-            default:
-                break
+            case .ethereum:
+                // #NOTE there is a JS bug here where sendTransaction is sent to signTransaction.
+                // Currently the js isn't buildable for me so we will keep the
+                // implementation here
+                if let params = json["object"] as? [String: Any] {
+                    aethersHandleSendTransaction(id, params)
+                }                 
+
+            default: break
             }
 
         case .signRawTransaction:
@@ -314,6 +332,8 @@ extension DAppWebViewController: WKScriptMessageHandler {
                     return
                 }
                 handleAptosSendTransaction(tx, id: id)
+            case .ethereum:
+                print("ETHEREUM SEND TRANSACTION")
             default:
                 break
             }
@@ -431,8 +451,11 @@ extension DAppWebViewController: WKScriptMessageHandler {
             webview?.tw.send(network: .ethereum, error: "Canceled", to: id)
         }))
         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak webview] _ in
-            let signed = self.signMessage(data: data, addPrefix: false)
-            webview?.tw.send(network: .ethereum, result: "0x" + signed.hexString, to: id)
+            let signed = try! Self.provider.signTypedMessage(message: [UInt8](data))
+            print("typed message: ", signed)
+            webview?.tw.send(network: .ethereum, result: "0x" + signed, to: id)
+            // let signed = self.signMessage(data: data, addPrefix: false)
+            // webview?.tw.send(network: .ethereum, result: "0x" + signed.hexString, to: id)
         }))
         present(alert, animated: true, completion: nil)
     }
@@ -524,12 +547,7 @@ extension DAppWebViewController: WKScriptMessageHandler {
     }
 
     func handleSwitchEthereumChain(id: Int64, chainId: Int) {
-        
-        var chainId = chainId
-        if switchToCustomChainID{
-            chainId = DAppWebViewController.customChainID
-        }
-        
+        print("SWITCHING CHAIN")
         guard let provider = providers[chainId] else {
             alert(title: "Error", message: "Unknown chain id: \(chainId)")
             webview.tw.send(network: .ethereum, error: "Unknown chain id", to: id)
@@ -629,6 +647,31 @@ extension DAppWebViewController: WKScriptMessageHandler {
                 self.webview.tw.send(network: .cosmos, result: txHash, to: id)
             }
         }
+    }
+
+    func aethersHandleSendTransaction(_ id: Int64, _ params: [String: Any]) {
+        let data = try! JSONSerialization.data(withJSONObject: params, options: [])
+        let payload = String(decoding: data, as: UTF8.self)
+        let alert = UIAlertController(
+            title: "Send Transaction",
+            message: payload,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Cancel", style: .destructive, handler: { [weak webview] _ in
+            webview?.tw.send(network: .ethereum, error: "Canceled", to: id)
+        }))
+        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { [weak webview] _ in
+            let provider_url = "http://localhost:9933"
+            let provider = try! providerFromUrl(url: provider_url)
+            // #HACK I have no idea how to get the raw body as a byte or string from the WKScriptMessage
+            // it seems like the body is already pre-parsed to a dictionary
+            // this re-serialization is easier than trying to create a matching object on all interfaces 
+            // (the TransactionRequest object)
+            let txHash = try! Self.provider.sendTransaction(provider: provider, payload: payload)
+            print("sent txHash", txHash)
+            webview?.tw.send(network: .ethereum, result: txHash, to: id)
+        }))
+        present(alert, animated: true, completion: nil)
     }
 
     func alert(title: String, message: String) {
@@ -998,3 +1041,6 @@ extension Data {
         task.resume()
     }
 }
+//# Helpful tools in swift that should be implemented somewhere
+//https://github.com/trustwallet/wallet-core/blob/master/swift/Sources/Extensions/Data%2BHex.swift
+//https://stackoverflow.com/questions/39075043/how-to-convert-data-to-hex-string-in-swift
