@@ -30,6 +30,20 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs += ["$projectDir/src/debug/jniLibs"]
+        }
+
+        debug {
+            jniLibs.srcDirs += ["$projectDir/src/debug/jniLibs"]
+        }
+
+        release {
+            jniLibs.srcDirs += ["$projectDir/src/release/jniLibs"]
+        }
+    }
 }
 
 dependencies {
@@ -46,4 +60,6 @@ dependencies {
     testImplementation 'junit:junit:4.+'
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
+
+    implementation 'net.java.dev.jna:jna:5.9.0@aar'
 }

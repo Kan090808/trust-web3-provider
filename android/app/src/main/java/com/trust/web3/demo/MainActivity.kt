@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.webkit.SslErrorHandler
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
@@ -53,6 +55,41 @@ class MainActivity : AppCompatActivity() {
             }
             webview.webViewClient = webViewClient
             webview.loadUrl(DAPP_URL)
+        }
+        val createButton = findViewById<Button>(R.id.btn_create)
+        createButton.setOnClickListener {
+            val wallet = Wallet("123456")
+            val memo = wallet.recoverPhrase("123456")
+            getSharedPreferences("MyWallet", MODE_PRIVATE).edit().putString("recoverPhrase", memo).apply()
+            Toast.makeText(this, memo, Toast.LENGTH_LONG).show()
+            val json = wallet.encryptJson()
+            getSharedPreferences("MyWallet", MODE_PRIVATE).edit().putString("wallet", json).apply()
+            val wallet2 = decryptJson(json, "123456")
+            val memo2 = wallet2.recoverPhrase("123456")
+            Toast.makeText(this, memo2, Toast.LENGTH_LONG).show()
+        }
+        val loadButton = findViewById<Button>(R.id.btn_load)
+        loadButton.setOnClickListener {
+            val json = getSharedPreferences("MyWallet", MODE_PRIVATE).getString("wallet", "")
+            if (json.isNullOrEmpty()) {
+                Toast.makeText(this, "No wallet", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }else{
+                val wallet = decryptJson(json, "123456")
+                val memo = wallet.recoverPhrase("")
+                Toast.makeText(this, memo, Toast.LENGTH_LONG).show()
+            }
+        }
+        val loadMomo = findViewById<Button>(R.id.btn_load_memo)
+        loadMomo.setOnClickListener {
+            val memo = getSharedPreferences("MyWallet", MODE_PRIVATE).getString("recoverPhrase", "")
+            if (memo.isNullOrEmpty()) {
+                Toast.makeText(this, "No memo", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }else{
+                val wallet = fromMnemonic(memo, "654321")
+                Toast.makeText(this, wallet.recoverPhrase("654321"), Toast.LENGTH_LONG).show()
+            }
         }
     }
 

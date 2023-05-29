@@ -3,7 +3,7 @@
 
 @file:Suppress("NAME_SHADOWING")
 
-package aethers;
+package com.trust.web3.demo
 
 // Common helper code.
 //
