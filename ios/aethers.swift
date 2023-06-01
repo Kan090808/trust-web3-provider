@@ -19,13 +19,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_aethers_6695_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_aethers_afd5_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_aethers_6695_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_aethers_afd5_rustbuffer_free(self, $0) }
     }
 }
 
@@ -293,6 +293,19 @@ fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
     }
 }
 
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
 fileprivate struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
@@ -333,7 +346,6 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 public protocol ChainProviderProtocol {
-    func `sendTransaction`() throws
     
 }
 
@@ -348,19 +360,12 @@ public class ChainProvider: ChainProviderProtocol {
     }
 
     deinit {
-        try! rustCall { ffi_aethers_6695_ChainProvider_object_free(pointer, $0) }
+        try! rustCall { ffi_aethers_afd5_ChainProvider_object_free(pointer, $0) }
     }
 
     
 
     
-    public func `sendTransaction`() throws {
-        try
-    rustCallWithError(FfiConverterTypeProviderError.self) {
-    aethers_6695_ChainProvider_send_transaction(self.pointer, $0
-    )
-}
-    }
     
 }
 
@@ -414,18 +419,19 @@ public class Wallet: WalletProtocol {
     required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
-    public convenience init(`password`: String)  {
+    public convenience init(`password`: String, `chainId`: UInt64)  {
         self.init(unsafeFromRawPointer: try!
     
     rustCall() {
     
-    aethers_6695_Wallet_new(
-        FfiConverterString.lower(`password`), $0)
+    aethers_afd5_Wallet_new(
+        FfiConverterString.lower(`password`), 
+        FfiConverterUInt64.lower(`chainId`), $0)
 })
     }
 
     deinit {
-        try! rustCall { ffi_aethers_6695_Wallet_object_free(pointer, $0) }
+        try! rustCall { ffi_aethers_afd5_Wallet_object_free(pointer, $0) }
     }
 
     
@@ -436,7 +442,7 @@ public class Wallet: WalletProtocol {
             try!
     rustCall() {
     
-    aethers_6695_Wallet_request_accounts(self.pointer, $0
+    aethers_afd5_Wallet_request_accounts(self.pointer, $0
     )
 }
         )
@@ -445,7 +451,7 @@ public class Wallet: WalletProtocol {
         return try FfiConverterString.lift(
             try
     rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_6695_Wallet_encrypt_json(self.pointer, $0
+    aethers_afd5_Wallet_encrypt_json(self.pointer, $0
     )
 }
         )
@@ -454,7 +460,7 @@ public class Wallet: WalletProtocol {
         return try FfiConverterString.lift(
             try
     rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_6695_Wallet_recover_phrase(self.pointer, 
+    aethers_afd5_Wallet_recover_phrase(self.pointer, 
         FfiConverterString.lower(`password`), $0
     )
 }
@@ -464,7 +470,7 @@ public class Wallet: WalletProtocol {
         return try FfiConverterString.lift(
             try
     rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_6695_Wallet_sign_typed_message(self.pointer, 
+    aethers_afd5_Wallet_sign_typed_message(self.pointer, 
         FfiConverterSequenceUInt8.lower(`message`), $0
     )
 }
@@ -474,7 +480,7 @@ public class Wallet: WalletProtocol {
         return try FfiConverterString.lift(
             try
     rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_6695_Wallet_send_transaction(self.pointer, 
+    aethers_afd5_Wallet_send_transaction(self.pointer, 
         FfiConverterTypeChainProvider.lower(`provider`), 
         FfiConverterString.lower(`payload`), $0
     )
@@ -793,7 +799,7 @@ public func `ecRecover`(`signature`: [UInt8], `message`: [UInt8]) throws -> Stri
     
     rustCallWithError(FfiConverterTypeWalletError.self) {
     
-    aethers_6695_ec_recover(
+    aethers_afd5_ec_recover(
         FfiConverterSequenceUInt8.lower(`signature`), 
         FfiConverterSequenceUInt8.lower(`message`), $0)
 }
@@ -802,30 +808,48 @@ public func `ecRecover`(`signature`: [UInt8], `message`: [UInt8]) throws -> Stri
 
 
 
-public func `decryptJson`(`encrypted`: String, `password`: String) throws -> Wallet {
+public func `decryptJsonBytes`(`encrypted`: [UInt8], `password`: [UInt8], `chainId`: UInt64) throws -> Wallet {
     return try FfiConverterTypeWallet.lift(
         try
     
     rustCallWithError(FfiConverterTypeWalletError.self) {
     
-    aethers_6695_decrypt_json(
-        FfiConverterString.lower(`encrypted`), 
-        FfiConverterString.lower(`password`), $0)
+    aethers_afd5_decrypt_json_bytes(
+        FfiConverterSequenceUInt8.lower(`encrypted`), 
+        FfiConverterSequenceUInt8.lower(`password`), 
+        FfiConverterUInt64.lower(`chainId`), $0)
 }
     )
 }
 
 
 
-public func `fromMnemonic`(`mnemonic`: String, `password`: String) throws -> Wallet {
+public func `decryptJson`(`encrypted`: String, `password`: String, `chainId`: UInt64) throws -> Wallet {
     return try FfiConverterTypeWallet.lift(
         try
     
     rustCallWithError(FfiConverterTypeWalletError.self) {
     
-    aethers_6695_from_mnemonic(
+    aethers_afd5_decrypt_json(
+        FfiConverterString.lower(`encrypted`), 
+        FfiConverterString.lower(`password`), 
+        FfiConverterUInt64.lower(`chainId`), $0)
+}
+    )
+}
+
+
+
+public func `fromMnemonic`(`mnemonic`: String, `password`: String, `chainId`: UInt64) throws -> Wallet {
+    return try FfiConverterTypeWallet.lift(
+        try
+    
+    rustCallWithError(FfiConverterTypeWalletError.self) {
+    
+    aethers_afd5_from_mnemonic(
         FfiConverterString.lower(`mnemonic`), 
-        FfiConverterString.lower(`password`), $0)
+        FfiConverterString.lower(`password`), 
+        FfiConverterUInt64.lower(`chainId`), $0)
 }
     )
 }
@@ -838,8 +862,31 @@ public func `providerFromUrl`(`url`: String) throws -> ChainProvider {
     
     rustCallWithError(FfiConverterTypeProviderError.self) {
     
-    aethers_6695_provider_from_url(
+    aethers_afd5_provider_from_url(
         FfiConverterString.lower(`url`), $0)
+}
+    )
+}
+
+
+
+public func `initLogger`()  {
+    try!
+    
+    rustCall() {
+    
+    aethers_afd5_init_logger($0)
+}
+}
+
+
+public func `implVersion`()  -> String {
+    return try! FfiConverterString.lift(
+        try!
+    
+    rustCall() {
+    
+    aethers_afd5_impl_version($0)
 }
     )
 }

@@ -46,71 +46,79 @@ typedef struct RustCallStatus {
 // ⚠️ increment the version suffix in all instances of UNIFFI_SHARED_HEADER_V4 in this file.           ⚠️
 #endif // def UNIFFI_SHARED_H
 
-void ffi_aethers_6695_Wallet_object_free(
+void ffi_aethers_afd5_Wallet_object_free(
       void*_Nonnull ptr,
     RustCallStatus *_Nonnull out_status
     );
-void*_Nonnull aethers_6695_Wallet_new(
-      RustBuffer password,
+void*_Nonnull aethers_afd5_Wallet_new(
+      RustBuffer password,uint64_t chain_id,
     RustCallStatus *_Nonnull out_status
     );
-RustBuffer aethers_6695_Wallet_request_accounts(
+RustBuffer aethers_afd5_Wallet_request_accounts(
       void*_Nonnull ptr,
     RustCallStatus *_Nonnull out_status
     );
-RustBuffer aethers_6695_Wallet_encrypt_json(
+RustBuffer aethers_afd5_Wallet_encrypt_json(
       void*_Nonnull ptr,
     RustCallStatus *_Nonnull out_status
     );
-RustBuffer aethers_6695_Wallet_recover_phrase(
+RustBuffer aethers_afd5_Wallet_recover_phrase(
       void*_Nonnull ptr,RustBuffer password,
     RustCallStatus *_Nonnull out_status
     );
-RustBuffer aethers_6695_Wallet_sign_typed_message(
+RustBuffer aethers_afd5_Wallet_sign_typed_message(
       void*_Nonnull ptr,RustBuffer message,
     RustCallStatus *_Nonnull out_status
     );
-RustBuffer aethers_6695_Wallet_send_transaction(
+RustBuffer aethers_afd5_Wallet_send_transaction(
       void*_Nonnull ptr,void*_Nonnull provider,RustBuffer payload,
     RustCallStatus *_Nonnull out_status
     );
-void ffi_aethers_6695_ChainProvider_object_free(
+void ffi_aethers_afd5_ChainProvider_object_free(
       void*_Nonnull ptr,
     RustCallStatus *_Nonnull out_status
     );
-void aethers_6695_ChainProvider_send_transaction(
-      void*_Nonnull ptr,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer aethers_6695_ec_recover(
+RustBuffer aethers_afd5_ec_recover(
       RustBuffer signature,RustBuffer message,
     RustCallStatus *_Nonnull out_status
     );
-void*_Nonnull aethers_6695_decrypt_json(
-      RustBuffer encrypted,RustBuffer password,
+void*_Nonnull aethers_afd5_decrypt_json_bytes(
+      RustBuffer encrypted,RustBuffer password,uint64_t chain_id,
     RustCallStatus *_Nonnull out_status
     );
-void*_Nonnull aethers_6695_from_mnemonic(
-      RustBuffer mnemonic,RustBuffer password,
+void*_Nonnull aethers_afd5_decrypt_json(
+      RustBuffer encrypted,RustBuffer password,uint64_t chain_id,
     RustCallStatus *_Nonnull out_status
     );
-void*_Nonnull aethers_6695_provider_from_url(
+void*_Nonnull aethers_afd5_from_mnemonic(
+      RustBuffer mnemonic,RustBuffer password,uint64_t chain_id,
+    RustCallStatus *_Nonnull out_status
+    );
+void*_Nonnull aethers_afd5_provider_from_url(
       RustBuffer url,
     RustCallStatus *_Nonnull out_status
     );
-RustBuffer ffi_aethers_6695_rustbuffer_alloc(
+void aethers_afd5_init_logger(
+      
+    RustCallStatus *_Nonnull out_status
+    );
+RustBuffer aethers_afd5_impl_version(
+      
+    RustCallStatus *_Nonnull out_status
+    );
+RustBuffer ffi_aethers_afd5_rustbuffer_alloc(
       int32_t size,
     RustCallStatus *_Nonnull out_status
     );
-RustBuffer ffi_aethers_6695_rustbuffer_from_bytes(
+RustBuffer ffi_aethers_afd5_rustbuffer_from_bytes(
       ForeignBytes bytes,
     RustCallStatus *_Nonnull out_status
     );
-void ffi_aethers_6695_rustbuffer_free(
+void ffi_aethers_afd5_rustbuffer_free(
       RustBuffer buf,
     RustCallStatus *_Nonnull out_status
     );
-RustBuffer ffi_aethers_6695_rustbuffer_reserve(
+RustBuffer ffi_aethers_afd5_rustbuffer_reserve(
       RustBuffer buf,int32_t additional,
     RustCallStatus *_Nonnull out_status
     );

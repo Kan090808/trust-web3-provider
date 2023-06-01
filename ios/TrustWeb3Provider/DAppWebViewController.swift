@@ -36,7 +36,7 @@ class DAppWebViewController: UIViewController {
     static var address = "0xE513673FE758193EFb8aFd7765171cD70263736C"
     static var customURL = "https://aminoxtestnet.node.alphacarbon.network/"
 
-    static let wallet = try! fromMnemonic(mnemonic: "bottom drive obey lake curtain smoke basket hold race lonely fit walk", password: "1234")
+    static let wallet = try! fromMnemonic(mnemonic: "bottom drive obey lake curtain smoke basket hold race lonely fit walk", password: "1234", chainId: 13370)
 
 //    static let wallet = HDWallet(strength: 128, passphrase: "")!
 

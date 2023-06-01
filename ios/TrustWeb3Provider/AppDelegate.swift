@@ -26,7 +26,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 //        let decrypted_wallet = try! decryptJson(encrypted: encrypted, password: "1234")
 //        let decrypted_address = decrypted_wallet.requestAccounts()
 //        assert(address == decrypted_address)
-
+        initLogger()
+        print("aethers:", implVersion())
+        
         return true
     }
 }
