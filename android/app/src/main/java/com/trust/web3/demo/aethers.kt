@@ -5,7 +5,6 @@
 
 package com.trust.web3.demo
 
-
 // Common helper code.
 //
 // Ideally this would live in a separate .kt file where it can be unittested etc
@@ -43,7 +42,7 @@ open class RustBuffer : Structure() {
 
     companion object {
         internal fun alloc(size: Int = 0) = rustCall() { status ->
-            _UniFFILib.INSTANCE.ffi_aethers_cf08_rustbuffer_alloc(size, status).also {
+            _UniFFILib.INSTANCE.ffi_aethers_afd5_rustbuffer_alloc(size, status).also {
                 if(it.data == null) {
                    throw RuntimeException("RustBuffer.alloc() returned null data pointer (size=${size})")
                }
@@ -51,7 +50,7 @@ open class RustBuffer : Structure() {
         }
 
         internal fun free(buf: RustBuffer.ByValue) = rustCall() { status ->
-            _UniFFILib.INSTANCE.ffi_aethers_cf08_rustbuffer_free(buf, status)
+            _UniFFILib.INSTANCE.ffi_aethers_afd5_rustbuffer_free(buf, status)
         }
     }
 
@@ -260,79 +259,79 @@ internal interface _UniFFILib : Library {
         }
     }
 
-    fun ffi_aethers_cf08_Wallet_object_free(`ptr`: Pointer,
+    fun ffi_aethers_afd5_Wallet_object_free(`ptr`: Pointer,
     _uniffi_out_err: RustCallStatus
     ): Unit
 
-    fun aethers_cf08_Wallet_new(`password`: RustBuffer.ByValue,`chainId`: Long,
+    fun aethers_afd5_Wallet_new(`password`: RustBuffer.ByValue,`chainId`: Long,
     _uniffi_out_err: RustCallStatus
     ): Pointer
 
-    fun aethers_cf08_Wallet_request_accounts(`ptr`: Pointer,
+    fun aethers_afd5_Wallet_request_accounts(`ptr`: Pointer,
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
-    fun aethers_cf08_Wallet_encrypt_json(`ptr`: Pointer,
+    fun aethers_afd5_Wallet_encrypt_json(`ptr`: Pointer,
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
-    fun aethers_cf08_Wallet_recover_phrase(`ptr`: Pointer,`password`: RustBuffer.ByValue,
+    fun aethers_afd5_Wallet_recover_phrase(`ptr`: Pointer,`password`: RustBuffer.ByValue,
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
-    fun aethers_cf08_Wallet_sign_typed_message(`ptr`: Pointer,`message`: RustBuffer.ByValue,
+    fun aethers_afd5_Wallet_sign_typed_message(`ptr`: Pointer,`message`: RustBuffer.ByValue,
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
-    fun aethers_cf08_Wallet_send_transaction(`ptr`: Pointer,`provider`: Pointer,`payload`: RustBuffer.ByValue,
+    fun aethers_afd5_Wallet_send_transaction(`ptr`: Pointer,`provider`: Pointer,`payload`: RustBuffer.ByValue,
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
-    fun ffi_aethers_cf08_ChainProvider_object_free(`ptr`: Pointer,
+    fun ffi_aethers_afd5_ChainProvider_object_free(`ptr`: Pointer,
     _uniffi_out_err: RustCallStatus
     ): Unit
 
-    fun aethers_cf08_ChainProvider_send_transaction(`ptr`: Pointer,
-    _uniffi_out_err: RustCallStatus
-    ): Unit
-
-    fun aethers_cf08_ec_recover(`signature`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,
+    fun aethers_afd5_ec_recover(`signature`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
-    fun aethers_cf08_decrypt_json_bytes(`encrypted`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
+    fun aethers_afd5_decrypt_json_bytes(`encrypted`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
     _uniffi_out_err: RustCallStatus
     ): Pointer
 
-    fun aethers_cf08_decrypt_json(`encrypted`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
+    fun aethers_afd5_decrypt_json(`encrypted`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
     _uniffi_out_err: RustCallStatus
     ): Pointer
 
-    fun aethers_cf08_from_mnemonic(`mnemonic`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
+    fun aethers_afd5_from_mnemonic(`mnemonic`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
     _uniffi_out_err: RustCallStatus
     ): Pointer
 
-    fun aethers_cf08_provider_from_url(`url`: RustBuffer.ByValue,
+    fun aethers_afd5_provider_from_url(`url`: RustBuffer.ByValue,
     _uniffi_out_err: RustCallStatus
     ): Pointer
 
-    fun aethers_cf08_init_logger(
+    fun aethers_afd5_init_logger(
     _uniffi_out_err: RustCallStatus
     ): Unit
 
-    fun ffi_aethers_cf08_rustbuffer_alloc(`size`: Int,
+    fun aethers_afd5_impl_version(
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
-    fun ffi_aethers_cf08_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,
+    fun ffi_aethers_afd5_rustbuffer_alloc(`size`: Int,
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
-    fun ffi_aethers_cf08_rustbuffer_free(`buf`: RustBuffer.ByValue,
+    fun ffi_aethers_afd5_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,
+    _uniffi_out_err: RustCallStatus
+    ): RustBuffer.ByValue
+
+    fun ffi_aethers_afd5_rustbuffer_free(`buf`: RustBuffer.ByValue,
     _uniffi_out_err: RustCallStatus
     ): Unit
 
-    fun ffi_aethers_cf08_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Int,
+    fun ffi_aethers_afd5_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Int,
     _uniffi_out_err: RustCallStatus
     ): RustBuffer.ByValue
 
@@ -593,9 +592,6 @@ abstract class FFIObject(
 
 public interface ChainProviderInterface {
     
-    @Throws(ProviderException::class)
-    fun `sendTransaction`()
-    
 }
 
 class ChainProvider(
@@ -612,18 +608,10 @@ class ChainProvider(
      */
     override protected fun freeRustArcPtr() {
         rustCall() { status ->
-            _UniFFILib.INSTANCE.ffi_aethers_cf08_ChainProvider_object_free(this.pointer, status)
+            _UniFFILib.INSTANCE.ffi_aethers_afd5_ChainProvider_object_free(this.pointer, status)
         }
     }
 
-    
-    @Throws(ProviderException::class)override fun `sendTransaction`() =
-        callWithPointer {
-    rustCallWithError(ProviderException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_ChainProvider_send_transaction(it,  _status)
-}
-        }
-    
     
 
     
@@ -678,7 +666,7 @@ class Wallet(
     constructor(`password`: String, `chainId`: ULong) :
         this(
     rustCall() { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_Wallet_new(FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
+    _UniFFILib.INSTANCE.aethers_afd5_Wallet_new(FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
 })
 
     /**
@@ -691,14 +679,14 @@ class Wallet(
      */
     override protected fun freeRustArcPtr() {
         rustCall() { status ->
-            _UniFFILib.INSTANCE.ffi_aethers_cf08_Wallet_object_free(this.pointer, status)
+            _UniFFILib.INSTANCE.ffi_aethers_afd5_Wallet_object_free(this.pointer, status)
         }
     }
 
     override fun `requestAccounts`(): List<String> =
         callWithPointer {
     rustCall() { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_Wallet_request_accounts(it,  _status)
+    _UniFFILib.INSTANCE.aethers_afd5_Wallet_request_accounts(it,  _status)
 }
         }.let {
             FfiConverterSequenceString.lift(it)
@@ -707,7 +695,7 @@ class Wallet(
     @Throws(WalletException::class)override fun `encryptJson`(): String =
         callWithPointer {
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_Wallet_encrypt_json(it,  _status)
+    _UniFFILib.INSTANCE.aethers_afd5_Wallet_encrypt_json(it,  _status)
 }
         }.let {
             FfiConverterString.lift(it)
@@ -716,7 +704,7 @@ class Wallet(
     @Throws(WalletException::class)override fun `recoverPhrase`(`password`: String): String =
         callWithPointer {
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_Wallet_recover_phrase(it, FfiConverterString.lower(`password`),  _status)
+    _UniFFILib.INSTANCE.aethers_afd5_Wallet_recover_phrase(it, FfiConverterString.lower(`password`),  _status)
 }
         }.let {
             FfiConverterString.lift(it)
@@ -725,7 +713,7 @@ class Wallet(
     @Throws(WalletException::class)override fun `signTypedMessage`(`message`: List<UByte>): String =
         callWithPointer {
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_Wallet_sign_typed_message(it, FfiConverterSequenceUByte.lower(`message`),  _status)
+    _UniFFILib.INSTANCE.aethers_afd5_Wallet_sign_typed_message(it, FfiConverterSequenceUByte.lower(`message`),  _status)
 }
         }.let {
             FfiConverterString.lift(it)
@@ -734,7 +722,7 @@ class Wallet(
     @Throws(WalletException::class)override fun `sendTransaction`(`provider`: ChainProvider, `payload`: String): String =
         callWithPointer {
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_Wallet_send_transaction(it, FfiConverterTypeChainProvider.lower(`provider`), FfiConverterString.lower(`payload`),  _status)
+    _UniFFILib.INSTANCE.aethers_afd5_Wallet_send_transaction(it, FfiConverterTypeChainProvider.lower(`provider`), FfiConverterString.lower(`payload`),  _status)
 }
         }.let {
             FfiConverterString.lift(it)
@@ -978,7 +966,7 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<String>> {
 fun `ecRecover`(`signature`: List<UByte>, `message`: List<UByte>): String {
     return FfiConverterString.lift(
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_ec_recover(FfiConverterSequenceUByte.lower(`signature`), FfiConverterSequenceUByte.lower(`message`), _status)
+    _UniFFILib.INSTANCE.aethers_afd5_ec_recover(FfiConverterSequenceUByte.lower(`signature`), FfiConverterSequenceUByte.lower(`message`), _status)
 })
 }
 
@@ -988,7 +976,7 @@ fun `ecRecover`(`signature`: List<UByte>, `message`: List<UByte>): String {
 fun `decryptJsonBytes`(`encrypted`: List<UByte>, `password`: List<UByte>, `chainId`: ULong): Wallet {
     return FfiConverterTypeWallet.lift(
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_decrypt_json_bytes(FfiConverterSequenceUByte.lower(`encrypted`), FfiConverterSequenceUByte.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
+    _UniFFILib.INSTANCE.aethers_afd5_decrypt_json_bytes(FfiConverterSequenceUByte.lower(`encrypted`), FfiConverterSequenceUByte.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
 })
 }
 
@@ -998,7 +986,7 @@ fun `decryptJsonBytes`(`encrypted`: List<UByte>, `password`: List<UByte>, `chain
 fun `decryptJson`(`encrypted`: String, `password`: String, `chainId`: ULong): Wallet {
     return FfiConverterTypeWallet.lift(
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_decrypt_json(FfiConverterString.lower(`encrypted`), FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
+    _UniFFILib.INSTANCE.aethers_afd5_decrypt_json(FfiConverterString.lower(`encrypted`), FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
 })
 }
 
@@ -1008,7 +996,7 @@ fun `decryptJson`(`encrypted`: String, `password`: String, `chainId`: ULong): Wa
 fun `fromMnemonic`(`mnemonic`: String, `password`: String, `chainId`: ULong): Wallet {
     return FfiConverterTypeWallet.lift(
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_from_mnemonic(FfiConverterString.lower(`mnemonic`), FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
+    _UniFFILib.INSTANCE.aethers_afd5_from_mnemonic(FfiConverterString.lower(`mnemonic`), FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
 })
 }
 
@@ -1018,7 +1006,7 @@ fun `fromMnemonic`(`mnemonic`: String, `password`: String, `chainId`: ULong): Wa
 fun `providerFromUrl`(`url`: String): ChainProvider {
     return FfiConverterTypeChainProvider.lift(
     rustCallWithError(ProviderException) { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_provider_from_url(FfiConverterString.lower(`url`), _status)
+    _UniFFILib.INSTANCE.aethers_afd5_provider_from_url(FfiConverterString.lower(`url`), _status)
 })
 }
 
@@ -1027,8 +1015,17 @@ fun `providerFromUrl`(`url`: String): ChainProvider {
 fun `initLogger`() =
     
     rustCall() { _status ->
-    _UniFFILib.INSTANCE.aethers_cf08_init_logger( _status)
+    _UniFFILib.INSTANCE.aethers_afd5_init_logger( _status)
 }
+
+
+fun `implVersion`(): String {
+    return FfiConverterString.lift(
+    rustCall() { _status ->
+    _UniFFILib.INSTANCE.aethers_afd5_impl_version( _status)
+})
+}
+
 
 
 
