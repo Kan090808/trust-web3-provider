@@ -199,6 +199,9 @@ class TrustWeb3Provider extends BaseProvider {
             `Trust does not support calling ${payload.method}. Please use your own solution`
           );
         case "eth_getTransactionReceipt":
+          if (this.isDebug) {
+            console.log(`eth_getTransactionReceipt `, payload);
+          }
           return this.getTransactionReceipt(payload);
         default:
           // call upstream rpc
@@ -348,6 +351,10 @@ class TrustWeb3Provider extends BaseProvider {
 
   wallet_switchEthereumChain(payload) {
     this.postMessage("switchEthereumChain", payload.id, payload.params[0]);
+  }
+    
+  getTransactionReceipt(payload){
+    this.postMessage("getTransactionReceipt", payload.id, payload.params[0])
   }
 
   /**

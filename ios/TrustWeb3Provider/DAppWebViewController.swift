@@ -199,35 +199,6 @@ extension DAppWebViewController: WKScriptMessageHandler {
             handleRequestAccounts(network: network, id: id)
         case .signTransaction:
             switch network {
-//            case .ethereum:
-//                let secretPrivateKeyEth = Self.wallet.getKeyForCoin(coin: .ethereum)
-//                guard let object = json["object"] as? [String: Any] else {return}
-//                let signerInput = EthereumSigningInput.with {
-//                    let str = "13370"
-//                    let data = Data(str.utf8)
-//                    let hexString = data.map{ String(format:"%02x", $0) }.joined()
-//                    $0.chainID = Data(hexString: hexString)!
-//                    $0.gasPrice = BigInt(3600000000).magnitude.serialize()
-//                    $0.gasLimit = BigInt(21000).magnitude.serialize()
-//                    $0.toAddress = object["to"] as! String
-//
-//                    $0.transaction = EthereumTransaction.with {
-//                        $0.transfer = EthereumTransaction.Transfer.with {
-//                            $0.amount = BigInt(1).magnitude.serialize()
-//                        }
-//                    }
-//                    $0.privateKey = secretPrivateKeyEth.data
-//                }
-//                print("signerInput:", signerInput.debugDescription)
-//                handleSignTransaction(network: .ethereum, id: json["id"]! as! Int64) { [weak webview] in
-//                    let output: EthereumSigningOutput = AnySigner.sign(input: signerInput, coin: .ethereum)
-//                    print("Signed transaction:")
-//                    print(" encoded:   ", output.encoded.hexString)
-//                    print(" data:   ", output.data.hexString)
-//                    webview?.tw.send(network: network, result: output.encoded.hexString, to: id)
-//                }
-//
-//                break
             case .cosmos:
                 break;
             case .aptos:
@@ -344,6 +315,9 @@ extension DAppWebViewController: WKScriptMessageHandler {
                 }
                 handleSwitchCosmosChain(id: id, chainId: chainId)
             }
+        case .getTransactionReceipt:
+            print("receive getTransactionReceipt event")
+            break
         default:
             break
         }

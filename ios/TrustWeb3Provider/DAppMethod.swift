@@ -19,4 +19,5 @@ enum DAppMethod: String, Decodable, CaseIterable {
     case addEthereumChain
     case switchEthereumChain // legacy compatible
     case switchChain
+    case getTransactionReceipt
 }
