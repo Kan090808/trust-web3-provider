@@ -118,6 +118,7 @@ class DAppWebViewController: UIViewController {
         let webview = WKWebView(frame: .zero, configuration: config)
         webview.translatesAutoresizingMaskIntoConstraints = false
         webview.uiDelegate = self
+        webview.navigationDelegate = self
         if #available(iOS 16.4, *) { 
             webview.isInspectable = true
         }
@@ -741,6 +742,32 @@ extension DAppWebViewController: WKScriptMessageHandler {
     private func ethereumMessage(for data: Data) -> Data {
         let prefix = "\u{19}Ethereum Signed Message:\n\(data.count)".data(using: .utf8)!
         return prefix + data
+    }
+}
+
+extension DAppWebViewController: WKNavigationDelegate{
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust {
+            // Accept the certificate regardless of its validity
+            let credential = URLCredential(trust: challenge.protectionSpace.serverTrust!)
+            completionHandler(.useCredential, credential)
+        } else {
+            // Handle other types of challenges if needed
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+    
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        print("載入失敗: \(error.localizedDescription)")
+        
+        // 做一些特定操作（例如顯示錯誤訊息）
+        let alertController = UIAlertController(title: "載入失敗", message: error.localizedDescription, preferredStyle: .alert)
+        let okAction = UIAlertAction(title: "確定", style: .default, handler: nil)
+        alertController.addAction(okAction)
+        present(alertController, animated: true, completion: nil)
+        
+        // 或者你可以繼續載入網頁
+        // webView.reload()
     }
 }
 
