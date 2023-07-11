@@ -5,7 +5,7 @@
 # file LICENSE at the root of the source code distribution tree.
 
 Pod::Spec.new do |s|
-  s.name             = 'TrustWeb3Provider'
+  s.name             = 'TrustWeb3Provider_Kan090808'
   s.version          = '1.0.0'
   s.summary          = 'Web3 javascript wrapper provider for iOS and Android platforms.'
 
@@ -14,10 +14,10 @@ Pod::Spec.new do |s|
   The magic behind the dApps browsers
   DESC
 
-  s.homepage         = 'https://github.com/TrustWallet/trust-web3-provider'
+  s.homepage         = 'https://github.com/Kan090808/trust-web3-provider'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'hewigovens' => 'hewigovens@gmail.com', 'Viktor Radchenko' => 'vikmeup' }
-  s.source           = { :git => 'https://github.com/TrustWallet/trust-web3-provider.git', :tag => s.version.to_s }
+  s.source           = { :git => 'https://github.com/Kan090808/trust-web3-provider.git', :branch => "dev" }
   s.social_media_url = 'https://twitter.com/TrustWallet'
 
   s.ios.deployment_target = '13.0'
