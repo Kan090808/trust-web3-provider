@@ -5,7 +5,7 @@
 # file LICENSE at the root of the source code distribution tree.
 
 Pod::Spec.new do |s|
-  s.name             = 'TrustWeb3Provider_Kan090808'
+  s.name             = 'TrustWeb3Provider'
   s.version          = '1.0.0'
   s.summary          = 'Web3 javascript wrapper provider for iOS and Android platforms.'
 
