@@ -10,7 +10,7 @@ package aethers;
 // Ideally this would live in a separate .kt file where it can be unittested etc
 // in isolation, and perhaps even published as a re-useable package.
 //
-// However, it's important that the detils of how this helper code works (e.g. the
+// However, it's important that the details of how this helper code works (e.g. the
 // way that different builtin types are passed across the FFI) exactly match what's
 // expected by the Rust code on the other side of the interface. In practice right
 // now that means coming from the exact some version of `uniffi` that was used to
@@ -18,12 +18,17 @@ package aethers;
 // helpers directly inline like we're doing here.
 
 import com.sun.jna.Library
+import com.sun.jna.IntegerType
 import com.sun.jna.Native
 import com.sun.jna.Pointer
 import com.sun.jna.Structure
-import com.sun.jna.ptr.ByReference
+import com.sun.jna.Callback
+import com.sun.jna.ptr.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.CharBuffer
+import java.nio.charset.CodingErrorAction
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -37,20 +42,20 @@ open class RustBuffer : Structure() {
     @JvmField var len: Int = 0
     @JvmField var data: Pointer? = null
 
-    class ByValue : RustBuffer(), Structure.ByValue
-    class ByReference : RustBuffer(), Structure.ByReference
+    class ByValue: RustBuffer(), Structure.ByValue
+    class ByReference: RustBuffer(), Structure.ByReference
 
     companion object {
         internal fun alloc(size: Int = 0) = rustCall() { status ->
-            _UniFFILib.INSTANCE.ffi_aethers_afd5_rustbuffer_alloc(size, status).also {
-                if(it.data == null) {
-                   throw RuntimeException("RustBuffer.alloc() returned null data pointer (size=${size})")
-               }
-            }
+            _UniFFILib.INSTANCE.ffi_aethers_rustbuffer_alloc(size, status)
+        }.also {
+            if(it.data == null) {
+               throw RuntimeException("RustBuffer.alloc() returned null data pointer (size=${size})")
+           }
         }
 
         internal fun free(buf: RustBuffer.ByValue) = rustCall() { status ->
-            _UniFFILib.INSTANCE.ffi_aethers_afd5_rustbuffer_free(buf, status)
+            _UniFFILib.INSTANCE.ffi_aethers_rustbuffer_free(buf, status)
         }
     }
 
@@ -77,6 +82,19 @@ class RustBufferByReference : ByReference(16) {
         pointer.setInt(0, value.capacity)
         pointer.setInt(4, value.len)
         pointer.setPointer(8, value.data)
+    }
+
+    /**
+     * Get a `RustBuffer.ByValue` from this reference.
+     */
+    fun getValue(): RustBuffer.ByValue {
+        val pointer = getPointer()
+        val value = RustBuffer.ByValue()
+        value.writeField("capacity", pointer.getInt(0))
+        value.writeField("len", pointer.getInt(4))
+        value.writeField("data", pointer.getPointer(8))
+
+        return value
     }
 }
 
@@ -169,19 +187,21 @@ public interface FfiConverterRustBuffer<KotlinType>: FfiConverter<KotlinType, Ru
 // Error runtime.
 @Structure.FieldOrder("code", "error_buf")
 internal open class RustCallStatus : Structure() {
-    @JvmField var code: Int = 0
+    @JvmField var code: Byte = 0
     @JvmField var error_buf: RustBuffer.ByValue = RustBuffer.ByValue()
 
+    class ByValue: RustCallStatus(), Structure.ByValue
+
     fun isSuccess(): Boolean {
-        return code == 0
+        return code == 0.toByte()
     }
 
     fun isError(): Boolean {
-        return code == 1
+        return code == 1.toByte()
     }
 
     fun isPanic(): Boolean {
-        return code == 2
+        return code == 2.toByte()
     }
 }
 
@@ -200,8 +220,14 @@ interface CallStatusErrorHandler<E> {
 private inline fun <U, E: Exception> rustCallWithError(errorHandler: CallStatusErrorHandler<E>, callback: (RustCallStatus) -> U): U {
     var status = RustCallStatus();
     val return_value = callback(status)
+    checkCallStatus(errorHandler, status)
+    return return_value
+}
+
+// Check RustCallStatus and throw an error if the call wasn't successful
+private fun<E: Exception> checkCallStatus(errorHandler: CallStatusErrorHandler<E>, status: RustCallStatus) {
     if (status.isSuccess()) {
-        return return_value
+        return
     } else if (status.isError()) {
         throw errorHandler.lift(status.error_buf)
     } else if (status.isPanic()) {
@@ -231,6 +257,93 @@ private inline fun <U> rustCall(callback: (RustCallStatus) -> U): U {
     return rustCallWithError(NullCallStatusErrorHandler, callback);
 }
 
+// IntegerType that matches Rust's `usize` / C's `size_t`
+public class USize(value: Long = 0) : IntegerType(Native.SIZE_T_SIZE, value, true) {
+    // This is needed to fill in the gaps of IntegerType's implementation of Number for Kotlin.
+    override fun toByte() = toInt().toByte()
+    // Needed until https://youtrack.jetbrains.com/issue/KT-47902 is fixed.
+    @Deprecated("`toInt().toChar()` is deprecated")
+    override fun toChar() = toInt().toChar()
+    override fun toShort() = toInt().toShort()
+
+    fun writeToBuffer(buf: ByteBuffer) {
+        // Make sure we always write usize integers using native byte-order, since they may be
+        // casted to pointer values
+        buf.order(ByteOrder.nativeOrder())
+        try {
+            when (Native.SIZE_T_SIZE) {
+                4 -> buf.putInt(toInt())
+                8 -> buf.putLong(toLong())
+                else -> throw RuntimeException("Invalid SIZE_T_SIZE: ${Native.SIZE_T_SIZE}")
+            }
+        } finally {
+            buf.order(ByteOrder.BIG_ENDIAN)
+        }
+    }
+
+    companion object {
+        val size: Int
+            get() = Native.SIZE_T_SIZE
+
+        fun readFromBuffer(buf: ByteBuffer) : USize {
+            // Make sure we always read usize integers using native byte-order, since they may be
+            // casted from pointer values
+            buf.order(ByteOrder.nativeOrder())
+            try {
+                return when (Native.SIZE_T_SIZE) {
+                    4 -> USize(buf.getInt().toLong())
+                    8 -> USize(buf.getLong())
+                    else -> throw RuntimeException("Invalid SIZE_T_SIZE: ${Native.SIZE_T_SIZE}")
+                }
+            } finally {
+                buf.order(ByteOrder.BIG_ENDIAN)
+            }
+        }
+    }
+}
+
+
+// Map handles to objects
+//
+// This is used when the Rust code expects an opaque pointer to represent some foreign object.
+// Normally we would pass a pointer to the object, but JNA doesn't support getting a pointer from an
+// object reference , nor does it support leaking a reference to Rust.
+//
+// Instead, this class maps USize values to objects so that we can pass a pointer-sized type to
+// Rust when it needs an opaque pointer.
+//
+// TODO: refactor callbacks to use this class
+internal class UniFfiHandleMap<T: Any> {
+    private val map = ConcurrentHashMap<USize, T>()
+    // Use AtomicInteger for our counter, since we may be on a 32-bit system.  4 billion possible
+    // values seems like enough. If somehow we generate 4 billion handles, then this will wrap
+    // around back to zero and we can assume the first handle generated will have been dropped by
+    // then.
+    private val counter = java.util.concurrent.atomic.AtomicInteger(0)
+
+    val size: Int
+        get() = map.size
+
+    fun insert(obj: T): USize {
+        val handle = USize(counter.getAndAdd(1).toLong())
+        map.put(handle, obj)
+        return handle
+    }
+
+    fun get(handle: USize): T? {
+        return map.get(handle)
+    }
+
+    fun remove(handle: USize): T? {
+        return map.remove(handle)
+    }
+}
+
+// FFI type for Rust future continuations
+internal interface UniFffiRustFutureContinuationCallbackType : com.sun.jna.Callback {
+    fun callback(continuationHandle: USize, pollResult: Short);
+}
+
 // Contains loading, initialization code,
 // and the FFI Function declarations in a com.sun.jna.Library.
 @Synchronized
@@ -255,88 +368,351 @@ internal interface _UniFFILib : Library {
     companion object {
         internal val INSTANCE: _UniFFILib by lazy {
             loadIndirect<_UniFFILib>(componentName = "aethers")
-            
+            .also { lib: _UniFFILib ->
+                uniffiCheckContractApiVersion(lib)
+                uniffiCheckApiChecksums(lib)
+                }
         }
     }
 
-    fun ffi_aethers_afd5_Wallet_object_free(`ptr`: Pointer,
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_free_chainprovider(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
     ): Unit
-
-    fun aethers_afd5_Wallet_new(`password`: RustBuffer.ByValue,`chainId`: Long,
-    _uniffi_out_err: RustCallStatus
-    ): Pointer
-
-    fun aethers_afd5_Wallet_request_accounts(`ptr`: Pointer,
-    _uniffi_out_err: RustCallStatus
-    ): RustBuffer.ByValue
-
-    fun aethers_afd5_Wallet_encrypt_json(`ptr`: Pointer,
-    _uniffi_out_err: RustCallStatus
-    ): RustBuffer.ByValue
-
-    fun aethers_afd5_Wallet_recover_phrase(`ptr`: Pointer,`password`: RustBuffer.ByValue,
-    _uniffi_out_err: RustCallStatus
-    ): RustBuffer.ByValue
-
-    fun aethers_afd5_Wallet_sign_typed_message(`ptr`: Pointer,`message`: RustBuffer.ByValue,
-    _uniffi_out_err: RustCallStatus
-    ): RustBuffer.ByValue
-
-    fun aethers_afd5_Wallet_send_transaction(`ptr`: Pointer,`provider`: Pointer,`payload`: RustBuffer.ByValue,
-    _uniffi_out_err: RustCallStatus
-    ): RustBuffer.ByValue
-
-    fun ffi_aethers_afd5_ChainProvider_object_free(`ptr`: Pointer,
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_free_erc20contract(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
     ): Unit
-
-    fun aethers_afd5_ec_recover(`signature`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_constructor_erc20contract_new(`address`: RustBuffer.ByValue,`provider`: Pointer,`wallet`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Pointer
+    fun uniffi_aethers_fn_method_erc20contract_token_approve(`ptr`: Pointer,`spender`: RustBuffer.ByValue,`value`: Long,_uniffi_out_err: RustCallStatus, 
     ): RustBuffer.ByValue
-
-    fun aethers_afd5_decrypt_json_bytes(`encrypted`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
-    _uniffi_out_err: RustCallStatus
-    ): Pointer
-
-    fun aethers_afd5_decrypt_json(`encrypted`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
-    _uniffi_out_err: RustCallStatus
-    ): Pointer
-
-    fun aethers_afd5_from_mnemonic(`mnemonic`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,
-    _uniffi_out_err: RustCallStatus
-    ): Pointer
-
-    fun aethers_afd5_provider_from_url(`url`: RustBuffer.ByValue,
-    _uniffi_out_err: RustCallStatus
-    ): Pointer
-
-    fun aethers_afd5_init_logger(
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_method_erc20contract_token_balance_of(`ptr`: Pointer,`address`: RustBuffer.ByValue,_uniffi_out_err: RustCallStatus, 
+    ): Long
+    fun uniffi_aethers_fn_method_erc20contract_token_decimals(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Long
+    fun uniffi_aethers_fn_method_erc20contract_token_transfer(`ptr`: Pointer,`to`: RustBuffer.ByValue,`value`: Long,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_method_erc20contract_token_transfer_from(`ptr`: Pointer,`from`: RustBuffer.ByValue,`to`: RustBuffer.ByValue,`value`: Long,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_method_erc20contract_transfer_bridge_out(`ptr`: Pointer,`to`: RustBuffer.ByValue,`value`: Long,`chainId`: Long,`chainType`: Long,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_free_erc721contract(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
     ): Unit
-
-    fun aethers_afd5_impl_version(
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_constructor_erc721contract_new(`address`: RustBuffer.ByValue,`provider`: Pointer,`wallet`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Pointer
+    fun uniffi_aethers_fn_method_erc721contract_nft_current_price(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Long
+    fun uniffi_aethers_fn_method_erc721contract_nft_mint(`ptr`: Pointer,`to`: RustBuffer.ByValue,`value`: Long,_uniffi_out_err: RustCallStatus, 
     ): RustBuffer.ByValue
-
-    fun ffi_aethers_afd5_rustbuffer_alloc(`size`: Int,
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_method_erc721contract_nft_owner_of(`ptr`: Pointer,`tokenId`: Long,_uniffi_out_err: RustCallStatus, 
     ): RustBuffer.ByValue
-
-    fun ffi_aethers_afd5_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_method_erc721contract_nft_safe_transfer_from(`ptr`: Pointer,`to`: RustBuffer.ByValue,`tokenId`: Long,_uniffi_out_err: RustCallStatus, 
     ): RustBuffer.ByValue
-
-    fun ffi_aethers_afd5_rustbuffer_free(`buf`: RustBuffer.ByValue,
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_method_erc721contract_nft_total_supply(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Long
+    fun uniffi_aethers_fn_free_wallet(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
     ): Unit
-
-    fun ffi_aethers_afd5_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Int,
-    _uniffi_out_err: RustCallStatus
+    fun uniffi_aethers_fn_constructor_wallet_new(`password`: RustBuffer.ByValue,`chainId`: Long,_uniffi_out_err: RustCallStatus, 
+    ): Pointer
+    fun uniffi_aethers_fn_method_wallet_chain_id(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Long
+    fun uniffi_aethers_fn_method_wallet_encrypt_json(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
     ): RustBuffer.ByValue
-
+    fun uniffi_aethers_fn_method_wallet_recover_phrase(`ptr`: Pointer,`password`: RustBuffer.ByValue,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_method_wallet_request_accounts(`ptr`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_method_wallet_send_transaction(`ptr`: Pointer,`provider`: Pointer,`payload`: RustBuffer.ByValue,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_method_wallet_sign_typed_message(`ptr`: Pointer,`message`: RustBuffer.ByValue,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_method_wallet_switch_chain(`ptr`: Pointer,`chainId`: Long,_uniffi_out_err: RustCallStatus, 
+    ): Unit
+    fun uniffi_aethers_fn_func_decrypt_json(`encrypted`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,_uniffi_out_err: RustCallStatus, 
+    ): Pointer
+    fun uniffi_aethers_fn_func_decrypt_json_bytes(`encrypted`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,_uniffi_out_err: RustCallStatus, 
+    ): Pointer
+    fun uniffi_aethers_fn_func_ec_recover(`signature`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_func_from_mnemonic(`mnemonic`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`chainId`: Long,_uniffi_out_err: RustCallStatus, 
+    ): Pointer
+    fun uniffi_aethers_fn_func_impl_version(_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_aethers_fn_func_init_logger(_uniffi_out_err: RustCallStatus, 
+    ): Unit
+    fun uniffi_aethers_fn_func_provider_from_url(`url`: RustBuffer.ByValue,_uniffi_out_err: RustCallStatus, 
+    ): Pointer
+    fun ffi_aethers_rustbuffer_alloc(`size`: Int,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun ffi_aethers_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun ffi_aethers_rustbuffer_free(`buf`: RustBuffer.ByValue,_uniffi_out_err: RustCallStatus, 
+    ): Unit
+    fun ffi_aethers_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Int,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun ffi_aethers_rust_future_continuation_callback_set(`callback`: UniFffiRustFutureContinuationCallbackType,
+    ): Unit
+    fun ffi_aethers_rust_future_poll_u8(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_u8(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_u8(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_u8(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Byte
+    fun ffi_aethers_rust_future_poll_i8(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_i8(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_i8(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_i8(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Byte
+    fun ffi_aethers_rust_future_poll_u16(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_u16(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_u16(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_u16(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Short
+    fun ffi_aethers_rust_future_poll_i16(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_i16(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_i16(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_i16(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Short
+    fun ffi_aethers_rust_future_poll_u32(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_u32(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_u32(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_u32(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Int
+    fun ffi_aethers_rust_future_poll_i32(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_i32(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_i32(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_i32(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Int
+    fun ffi_aethers_rust_future_poll_u64(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_u64(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_u64(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_u64(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Long
+    fun ffi_aethers_rust_future_poll_i64(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_i64(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_i64(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_i64(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Long
+    fun ffi_aethers_rust_future_poll_f32(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_f32(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_f32(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_f32(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Float
+    fun ffi_aethers_rust_future_poll_f64(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_f64(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_f64(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_f64(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Double
+    fun ffi_aethers_rust_future_poll_pointer(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_pointer(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_pointer(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_pointer(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Pointer
+    fun ffi_aethers_rust_future_poll_rust_buffer(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_rust_buffer(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_rust_buffer(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_rust_buffer(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): RustBuffer.ByValue
+    fun ffi_aethers_rust_future_poll_void(`handle`: Pointer,`uniffiCallback`: USize,
+    ): Unit
+    fun ffi_aethers_rust_future_cancel_void(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_free_void(`handle`: Pointer,
+    ): Unit
+    fun ffi_aethers_rust_future_complete_void(`handle`: Pointer,_uniffi_out_err: RustCallStatus, 
+    ): Unit
+    fun uniffi_aethers_checksum_func_decrypt_json(
+    ): Short
+    fun uniffi_aethers_checksum_func_decrypt_json_bytes(
+    ): Short
+    fun uniffi_aethers_checksum_func_ec_recover(
+    ): Short
+    fun uniffi_aethers_checksum_func_from_mnemonic(
+    ): Short
+    fun uniffi_aethers_checksum_func_impl_version(
+    ): Short
+    fun uniffi_aethers_checksum_func_init_logger(
+    ): Short
+    fun uniffi_aethers_checksum_func_provider_from_url(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc20contract_token_approve(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc20contract_token_balance_of(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc20contract_token_decimals(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc20contract_token_transfer(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc20contract_token_transfer_from(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc20contract_transfer_bridge_out(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc721contract_nft_current_price(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc721contract_nft_mint(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc721contract_nft_owner_of(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc721contract_nft_safe_transfer_from(
+    ): Short
+    fun uniffi_aethers_checksum_method_erc721contract_nft_total_supply(
+    ): Short
+    fun uniffi_aethers_checksum_method_wallet_chain_id(
+    ): Short
+    fun uniffi_aethers_checksum_method_wallet_encrypt_json(
+    ): Short
+    fun uniffi_aethers_checksum_method_wallet_recover_phrase(
+    ): Short
+    fun uniffi_aethers_checksum_method_wallet_request_accounts(
+    ): Short
+    fun uniffi_aethers_checksum_method_wallet_send_transaction(
+    ): Short
+    fun uniffi_aethers_checksum_method_wallet_sign_typed_message(
+    ): Short
+    fun uniffi_aethers_checksum_method_wallet_switch_chain(
+    ): Short
+    fun uniffi_aethers_checksum_constructor_erc20contract_new(
+    ): Short
+    fun uniffi_aethers_checksum_constructor_erc721contract_new(
+    ): Short
+    fun uniffi_aethers_checksum_constructor_wallet_new(
+    ): Short
+    fun ffi_aethers_uniffi_contract_version(
+    ): Int
     
 }
+
+private fun uniffiCheckContractApiVersion(lib: _UniFFILib) {
+    // Get the bindings contract version from our ComponentInterface
+    val bindings_contract_version = 24
+    // Get the scaffolding contract version by calling the into the dylib
+    val scaffolding_contract_version = lib.ffi_aethers_uniffi_contract_version()
+    if (bindings_contract_version != scaffolding_contract_version) {
+        throw RuntimeException("UniFFI contract version mismatch: try cleaning and rebuilding your project")
+    }
+}
+
+@Suppress("UNUSED_PARAMETER")
+private fun uniffiCheckApiChecksums(lib: _UniFFILib) {
+    if (lib.uniffi_aethers_checksum_func_decrypt_json() != 15248.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_func_decrypt_json_bytes() != 52540.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_func_ec_recover() != 23223.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_func_from_mnemonic() != 35211.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_func_impl_version() != 33889.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_func_init_logger() != 49144.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_func_provider_from_url() != 41634.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc20contract_token_approve() != 18570.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc20contract_token_balance_of() != 13092.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc20contract_token_decimals() != 42934.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc20contract_token_transfer() != 13383.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc20contract_token_transfer_from() != 10329.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc20contract_transfer_bridge_out() != 8271.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc721contract_nft_current_price() != 43150.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc721contract_nft_mint() != 8536.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc721contract_nft_owner_of() != 40828.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc721contract_nft_safe_transfer_from() != 40845.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_erc721contract_nft_total_supply() != 19495.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_wallet_chain_id() != 29198.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_wallet_encrypt_json() != 44651.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_wallet_recover_phrase() != 16706.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_wallet_request_accounts() != 15608.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_wallet_send_transaction() != 25120.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_wallet_sign_typed_message() != 23720.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_method_wallet_switch_chain() != 35509.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_constructor_erc20contract_new() != 18221.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_constructor_erc721contract_new() != 34681.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_aethers_checksum_constructor_wallet_new() != 11262.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+}
+
+// Async support
 
 // Public interface members begin here.
 
@@ -402,17 +778,25 @@ public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
         return byteArr.toString(Charsets.UTF_8)
     }
 
+    fun toUtf8(value: String): ByteBuffer {
+        // Make sure we don't have invalid UTF-16, check for lone surrogates.
+        return Charsets.UTF_8.newEncoder().run {
+            onMalformedInput(CodingErrorAction.REPORT)
+            encode(CharBuffer.wrap(value))
+        }
+    }
+
     override fun lower(value: String): RustBuffer.ByValue {
-        val byteArr = value.toByteArray(Charsets.UTF_8)
+        val byteBuf = toUtf8(value)
         // Ideally we'd pass these bytes to `ffi_bytebuffer_from_bytes`, but doing so would require us
         // to copy them into a JNA `Memory`. So we might as well directly copy them into a `RustBuffer`.
-        val rbuf = RustBuffer.alloc(byteArr.size)
-        rbuf.asByteBuffer()!!.put(byteArr)
+        val rbuf = RustBuffer.alloc(byteBuf.limit())
+        rbuf.asByteBuffer()!!.put(byteBuf)
         return rbuf
     }
 
     // We aren't sure exactly how many bytes our string will be once it's UTF-8
-    // encoded.  Allocate 3 bytes per unicode codepoint which will always be
+    // encoded.  Allocate 3 bytes per UTF-16 code unit which will always be
     // enough.
     override fun allocationSize(value: String): Int {
         val sizeForLength = 4
@@ -421,9 +805,9 @@ public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
     }
 
     override fun write(value: String, buf: ByteBuffer) {
-        val byteArr = value.toByteArray(Charsets.UTF_8)
-        buf.putInt(byteArr.size)
-        buf.put(byteArr)
+        val byteBuf = toUtf8(value)
+        buf.putInt(byteBuf.limit())
+        buf.put(byteBuf)
     }
 }
 
@@ -592,6 +976,7 @@ abstract class FFIObject(
 
 public interface ChainProviderInterface {
     
+    companion object
 }
 
 class ChainProvider(
@@ -608,12 +993,14 @@ class ChainProvider(
      */
     override protected fun freeRustArcPtr() {
         rustCall() { status ->
-            _UniFFILib.INSTANCE.ffi_aethers_afd5_ChainProvider_object_free(this.pointer, status)
+            _UniFFILib.INSTANCE.uniffi_aethers_fn_free_chainprovider(this.pointer, status)
         }
     }
 
     
 
+    
+    companion object
     
 }
 
@@ -642,31 +1029,24 @@ public object FfiConverterTypeChainProvider: FfiConverter<ChainProvider, Pointer
 
 
 
-public interface WalletInterface {
-    
-    fun `requestAccounts`(): List<String>
-    
-    @Throws(WalletException::class)
-    fun `encryptJson`(): String
-    
-    @Throws(WalletException::class)
-    fun `recoverPhrase`(`password`: String): String
-    
-    @Throws(WalletException::class)
-    fun `signTypedMessage`(`message`: List<UByte>): String
-    
-    @Throws(WalletException::class)
-    fun `sendTransaction`(`provider`: ChainProvider, `payload`: String): String
-    
+public interface Erc20ContractInterface {
+    @Throws(ContractException::class)
+    fun `tokenApprove`(`spender`: String, `value`: ULong): String@Throws(ContractException::class)
+    fun `tokenBalanceOf`(`address`: String): ULong@Throws(ContractException::class)
+    fun `tokenDecimals`(): ULong@Throws(ContractException::class)
+    fun `tokenTransfer`(`to`: String, `value`: ULong): String@Throws(ContractException::class)
+    fun `tokenTransferFrom`(`from`: String, `to`: String, `value`: ULong): String@Throws(ContractException::class)
+    fun `transferBridgeOut`(`to`: String, `value`: ULong, `chainId`: ULong, `chainType`: ULong): String
+    companion object
 }
 
-class Wallet(
+class Erc20Contract(
     pointer: Pointer
-) : FFIObject(pointer), WalletInterface {
-    constructor(`password`: String, `chainId`: ULong) :
+) : FFIObject(pointer), Erc20ContractInterface {
+    constructor(`address`: String, `provider`: ChainProvider, `wallet`: Wallet) :
         this(
-    rustCall() { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_Wallet_new(FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_constructor_erc20contract_new(FfiConverterString.lower(`address`),FfiConverterTypeChainProvider.lower(`provider`),FfiConverterTypeWallet.lower(`wallet`),_status)
 })
 
     /**
@@ -679,56 +1059,358 @@ class Wallet(
      */
     override protected fun freeRustArcPtr() {
         rustCall() { status ->
-            _UniFFILib.INSTANCE.ffi_aethers_afd5_Wallet_object_free(this.pointer, status)
+            _UniFFILib.INSTANCE.uniffi_aethers_fn_free_erc20contract(this.pointer, status)
         }
     }
 
+    
+    @Throws(ContractException::class)override fun `tokenApprove`(`spender`: String, `value`: ULong): String =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc20contract_token_approve(it,
+        FfiConverterString.lower(`spender`),FfiConverterULong.lower(`value`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `tokenBalanceOf`(`address`: String): ULong =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc20contract_token_balance_of(it,
+        FfiConverterString.lower(`address`),
+        _status)
+}
+        }.let {
+            FfiConverterULong.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `tokenDecimals`(): ULong =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc20contract_token_decimals(it,
+        
+        _status)
+}
+        }.let {
+            FfiConverterULong.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `tokenTransfer`(`to`: String, `value`: ULong): String =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc20contract_token_transfer(it,
+        FfiConverterString.lower(`to`),FfiConverterULong.lower(`value`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `tokenTransferFrom`(`from`: String, `to`: String, `value`: ULong): String =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc20contract_token_transfer_from(it,
+        FfiConverterString.lower(`from`),FfiConverterString.lower(`to`),FfiConverterULong.lower(`value`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `transferBridgeOut`(`to`: String, `value`: ULong, `chainId`: ULong, `chainType`: ULong): String =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc20contract_transfer_bridge_out(it,
+        FfiConverterString.lower(`to`),FfiConverterULong.lower(`value`),FfiConverterULong.lower(`chainId`),FfiConverterULong.lower(`chainType`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    
+
+    
+    companion object
+    
+}
+
+public object FfiConverterTypeErc20Contract: FfiConverter<Erc20Contract, Pointer> {
+    override fun lower(value: Erc20Contract): Pointer = value.callWithPointer { it }
+
+    override fun lift(value: Pointer): Erc20Contract {
+        return Erc20Contract(value)
+    }
+
+    override fun read(buf: ByteBuffer): Erc20Contract {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: Erc20Contract) = 8
+
+    override fun write(value: Erc20Contract, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+
+
+public interface Erc721ContractInterface {
+    @Throws(ContractException::class)
+    fun `nftCurrentPrice`(): ULong@Throws(ContractException::class)
+    fun `nftMint`(`to`: String, `value`: ULong): String@Throws(ContractException::class)
+    fun `nftOwnerOf`(`tokenId`: ULong): String@Throws(ContractException::class)
+    fun `nftSafeTransferFrom`(`to`: String, `tokenId`: ULong): String@Throws(ContractException::class)
+    fun `nftTotalSupply`(): ULong
+    companion object
+}
+
+class Erc721Contract(
+    pointer: Pointer
+) : FFIObject(pointer), Erc721ContractInterface {
+    constructor(`address`: String, `provider`: ChainProvider, `wallet`: Wallet) :
+        this(
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_constructor_erc721contract_new(FfiConverterString.lower(`address`),FfiConverterTypeChainProvider.lower(`provider`),FfiConverterTypeWallet.lower(`wallet`),_status)
+})
+
+    /**
+     * Disconnect the object from the underlying Rust object.
+     *
+     * It can be called more than once, but once called, interacting with the object
+     * causes an `IllegalStateException`.
+     *
+     * Clients **must** call this method once done with the object, or cause a memory leak.
+     */
+    override protected fun freeRustArcPtr() {
+        rustCall() { status ->
+            _UniFFILib.INSTANCE.uniffi_aethers_fn_free_erc721contract(this.pointer, status)
+        }
+    }
+
+    
+    @Throws(ContractException::class)override fun `nftCurrentPrice`(): ULong =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc721contract_nft_current_price(it,
+        
+        _status)
+}
+        }.let {
+            FfiConverterULong.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `nftMint`(`to`: String, `value`: ULong): String =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc721contract_nft_mint(it,
+        FfiConverterString.lower(`to`),FfiConverterULong.lower(`value`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `nftOwnerOf`(`tokenId`: ULong): String =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc721contract_nft_owner_of(it,
+        FfiConverterULong.lower(`tokenId`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `nftSafeTransferFrom`(`to`: String, `tokenId`: ULong): String =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc721contract_nft_safe_transfer_from(it,
+        FfiConverterString.lower(`to`),FfiConverterULong.lower(`tokenId`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    
+    @Throws(ContractException::class)override fun `nftTotalSupply`(): ULong =
+        callWithPointer {
+    rustCallWithError(ContractException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_erc721contract_nft_total_supply(it,
+        
+        _status)
+}
+        }.let {
+            FfiConverterULong.lift(it)
+        }
+    
+    
+
+    
+    companion object
+    
+}
+
+public object FfiConverterTypeErc721Contract: FfiConverter<Erc721Contract, Pointer> {
+    override fun lower(value: Erc721Contract): Pointer = value.callWithPointer { it }
+
+    override fun lift(value: Pointer): Erc721Contract {
+        return Erc721Contract(value)
+    }
+
+    override fun read(buf: ByteBuffer): Erc721Contract {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: Erc721Contract) = 8
+
+    override fun write(value: Erc721Contract, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+
+
+public interface WalletInterface {
+    
+    fun `chainId`(): ULong@Throws(WalletException::class)
+    fun `encryptJson`(): String@Throws(WalletException::class)
+    fun `recoverPhrase`(`password`: String): String
+    fun `requestAccounts`(): List<String>@Throws(WalletException::class)
+    fun `sendTransaction`(`provider`: ChainProvider, `payload`: String): String@Throws(WalletException::class)
+    fun `signTypedMessage`(`message`: List<UByte>): String
+    fun `switchChain`(`chainId`: ULong)
+    companion object
+}
+
+class Wallet(
+    pointer: Pointer
+) : FFIObject(pointer), WalletInterface {
+    constructor(`password`: String, `chainId`: ULong) :
+        this(
+    rustCall() { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_constructor_wallet_new(FfiConverterString.lower(`password`),FfiConverterULong.lower(`chainId`),_status)
+})
+
+    /**
+     * Disconnect the object from the underlying Rust object.
+     *
+     * It can be called more than once, but once called, interacting with the object
+     * causes an `IllegalStateException`.
+     *
+     * Clients **must** call this method once done with the object, or cause a memory leak.
+     */
+    override protected fun freeRustArcPtr() {
+        rustCall() { status ->
+            _UniFFILib.INSTANCE.uniffi_aethers_fn_free_wallet(this.pointer, status)
+        }
+    }
+
+    override fun `chainId`(): ULong =
+        callWithPointer {
+    rustCall() { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_wallet_chain_id(it,
+        
+        _status)
+}
+        }.let {
+            FfiConverterULong.lift(it)
+        }
+    
+    
+    @Throws(WalletException::class)override fun `encryptJson`(): String =
+        callWithPointer {
+    rustCallWithError(WalletException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_wallet_encrypt_json(it,
+        
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    
+    @Throws(WalletException::class)override fun `recoverPhrase`(`password`: String): String =
+        callWithPointer {
+    rustCallWithError(WalletException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_wallet_recover_phrase(it,
+        FfiConverterString.lower(`password`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
     override fun `requestAccounts`(): List<String> =
         callWithPointer {
     rustCall() { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_Wallet_request_accounts(it,  _status)
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_wallet_request_accounts(it,
+        
+        _status)
 }
         }.let {
             FfiConverterSequenceString.lift(it)
         }
     
-    @Throws(WalletException::class)override fun `encryptJson`(): String =
-        callWithPointer {
-    rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_Wallet_encrypt_json(it,  _status)
-}
-        }.let {
-            FfiConverterString.lift(it)
-        }
-    
-    @Throws(WalletException::class)override fun `recoverPhrase`(`password`: String): String =
-        callWithPointer {
-    rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_Wallet_recover_phrase(it, FfiConverterString.lower(`password`),  _status)
-}
-        }.let {
-            FfiConverterString.lift(it)
-        }
-    
-    @Throws(WalletException::class)override fun `signTypedMessage`(`message`: List<UByte>): String =
-        callWithPointer {
-    rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_Wallet_sign_typed_message(it, FfiConverterSequenceUByte.lower(`message`),  _status)
-}
-        }.let {
-            FfiConverterString.lift(it)
-        }
     
     @Throws(WalletException::class)override fun `sendTransaction`(`provider`: ChainProvider, `payload`: String): String =
         callWithPointer {
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_Wallet_send_transaction(it, FfiConverterTypeChainProvider.lower(`provider`), FfiConverterString.lower(`payload`),  _status)
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_wallet_send_transaction(it,
+        FfiConverterTypeChainProvider.lower(`provider`),FfiConverterString.lower(`payload`),
+        _status)
 }
         }.let {
             FfiConverterString.lift(it)
         }
     
+    
+    @Throws(WalletException::class)override fun `signTypedMessage`(`message`: List<UByte>): String =
+        callWithPointer {
+    rustCallWithError(WalletException) { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_wallet_sign_typed_message(it,
+        FfiConverterSequenceUByte.lower(`message`),
+        _status)
+}
+        }.let {
+            FfiConverterString.lift(it)
+        }
+    
+    override fun `switchChain`(`chainId`: ULong) =
+        callWithPointer {
+    rustCall() { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_method_wallet_switch_chain(it,
+        FfiConverterULong.lower(`chainId`),
+        _status)
+}
+        }
+    
+    
+    
 
+    
+    companion object
     
 }
 
@@ -752,6 +1434,82 @@ public object FfiConverterTypeWallet: FfiConverter<Wallet, Pointer> {
         // and will fail to compile if they don't fit.
         buf.putLong(Pointer.nativeValue(lower(value)))
     }
+}
+
+
+
+
+
+sealed class ContractException(message: String): Exception(message) {
+        // Each variant is a nested class
+        // Flat enums carries a string error message, so no special implementation is necessary.
+        class InvalidAddress(message: String) : ContractException(message)
+        class LoadAbiException(message: String) : ContractException(message)
+        class Serde(message: String) : ContractException(message)
+        class AbiException(message: String) : ContractException(message)
+        class Provider(message: String) : ContractException(message)
+        class Wallet(message: String) : ContractException(message)
+        class ChainIdMismatch(message: String) : ContractException(message)
+        
+
+    companion object ErrorHandler : CallStatusErrorHandler<ContractException> {
+        override fun lift(error_buf: RustBuffer.ByValue): ContractException = FfiConverterTypeContractError.lift(error_buf)
+    }
+}
+
+public object FfiConverterTypeContractError : FfiConverterRustBuffer<ContractException> {
+    override fun read(buf: ByteBuffer): ContractException {
+        
+            return when(buf.getInt()) {
+            1 -> ContractException.InvalidAddress(FfiConverterString.read(buf))
+            2 -> ContractException.LoadAbiException(FfiConverterString.read(buf))
+            3 -> ContractException.Serde(FfiConverterString.read(buf))
+            4 -> ContractException.AbiException(FfiConverterString.read(buf))
+            5 -> ContractException.Provider(FfiConverterString.read(buf))
+            6 -> ContractException.Wallet(FfiConverterString.read(buf))
+            7 -> ContractException.ChainIdMismatch(FfiConverterString.read(buf))
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+        
+    }
+
+    override fun allocationSize(value: ContractException): Int {
+        return 4
+    }
+
+    override fun write(value: ContractException, buf: ByteBuffer) {
+        when(value) {
+            is ContractException.InvalidAddress -> {
+                buf.putInt(1)
+                Unit
+            }
+            is ContractException.LoadAbiException -> {
+                buf.putInt(2)
+                Unit
+            }
+            is ContractException.Serde -> {
+                buf.putInt(3)
+                Unit
+            }
+            is ContractException.AbiException -> {
+                buf.putInt(4)
+                Unit
+            }
+            is ContractException.Provider -> {
+                buf.putInt(5)
+                Unit
+            }
+            is ContractException.Wallet -> {
+                buf.putInt(6)
+                Unit
+            }
+            is ContractException.ChainIdMismatch -> {
+                buf.putInt(7)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
 }
 
 
@@ -830,6 +1588,10 @@ sealed class WalletException(message: String): Exception(message) {
         class EthSignature(message: String) : WalletException(message)
         class Provider(message: String) : WalletException(message)
         class InsufficientGasFunds(message: String) : WalletException(message)
+        class InvalidAddress(message: String) : WalletException(message)
+        class AbiException(message: String) : WalletException(message)
+        class FromAddressMismatch(message: String) : WalletException(message)
+        class ChainIdMismatch(message: String) : WalletException(message)
         
 
     companion object ErrorHandler : CallStatusErrorHandler<WalletException> {
@@ -852,6 +1614,10 @@ public object FfiConverterTypeWalletError : FfiConverterRustBuffer<WalletExcepti
             9 -> WalletException.EthSignature(FfiConverterString.read(buf))
             10 -> WalletException.Provider(FfiConverterString.read(buf))
             11 -> WalletException.InsufficientGasFunds(FfiConverterString.read(buf))
+            12 -> WalletException.InvalidAddress(FfiConverterString.read(buf))
+            13 -> WalletException.AbiException(FfiConverterString.read(buf))
+            14 -> WalletException.FromAddressMismatch(FfiConverterString.read(buf))
+            15 -> WalletException.ChainIdMismatch(FfiConverterString.read(buf))
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
         
@@ -905,6 +1671,22 @@ public object FfiConverterTypeWalletError : FfiConverterRustBuffer<WalletExcepti
             }
             is WalletException.InsufficientGasFunds -> {
                 buf.putInt(11)
+                Unit
+            }
+            is WalletException.InvalidAddress -> {
+                buf.putInt(12)
+                Unit
+            }
+            is WalletException.AbiException -> {
+                buf.putInt(13)
+                Unit
+            }
+            is WalletException.FromAddressMismatch -> {
+                buf.putInt(14)
+                Unit
+            }
+            is WalletException.ChainIdMismatch -> {
+                buf.putInt(15)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -963,41 +1745,53 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<String>> {
 }
 @Throws(WalletException::class)
 
-fun `ecRecover`(`signature`: List<UByte>, `message`: List<UByte>): String {
-    return FfiConverterString.lift(
+fun `decryptJson`(`encrypted`: String, `password`: String, `chainId`: ULong): Wallet {
+    return FfiConverterTypeWallet.lift(
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_ec_recover(FfiConverterSequenceUByte.lower(`signature`), FfiConverterSequenceUByte.lower(`message`), _status)
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_func_decrypt_json(FfiConverterString.lower(`encrypted`),FfiConverterString.lower(`password`),FfiConverterULong.lower(`chainId`),_status)
 })
 }
-
 
 @Throws(WalletException::class)
 
 fun `decryptJsonBytes`(`encrypted`: List<UByte>, `password`: List<UByte>, `chainId`: ULong): Wallet {
     return FfiConverterTypeWallet.lift(
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_decrypt_json_bytes(FfiConverterSequenceUByte.lower(`encrypted`), FfiConverterSequenceUByte.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_func_decrypt_json_bytes(FfiConverterSequenceUByte.lower(`encrypted`),FfiConverterSequenceUByte.lower(`password`),FfiConverterULong.lower(`chainId`),_status)
 })
 }
-
 
 @Throws(WalletException::class)
 
-fun `decryptJson`(`encrypted`: String, `password`: String, `chainId`: ULong): Wallet {
-    return FfiConverterTypeWallet.lift(
+fun `ecRecover`(`signature`: List<UByte>, `message`: List<UByte>): String {
+    return FfiConverterString.lift(
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_decrypt_json(FfiConverterString.lower(`encrypted`), FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_func_ec_recover(FfiConverterSequenceUByte.lower(`signature`),FfiConverterSequenceUByte.lower(`message`),_status)
 })
 }
-
 
 @Throws(WalletException::class)
 
 fun `fromMnemonic`(`mnemonic`: String, `password`: String, `chainId`: ULong): Wallet {
     return FfiConverterTypeWallet.lift(
     rustCallWithError(WalletException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_from_mnemonic(FfiConverterString.lower(`mnemonic`), FfiConverterString.lower(`password`), FfiConverterULong.lower(`chainId`), _status)
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_func_from_mnemonic(FfiConverterString.lower(`mnemonic`),FfiConverterString.lower(`password`),FfiConverterULong.lower(`chainId`),_status)
 })
+}
+
+
+fun `implVersion`(): String {
+    return FfiConverterString.lift(
+    rustCall() { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_func_impl_version(_status)
+})
+}
+
+
+fun `initLogger`() =
+    
+    rustCall() { _status ->
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_func_init_logger(_status)
 }
 
 
@@ -1006,26 +1800,8 @@ fun `fromMnemonic`(`mnemonic`: String, `password`: String, `chainId`: ULong): Wa
 fun `providerFromUrl`(`url`: String): ChainProvider {
     return FfiConverterTypeChainProvider.lift(
     rustCallWithError(ProviderException) { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_provider_from_url(FfiConverterString.lower(`url`), _status)
+    _UniFFILib.INSTANCE.uniffi_aethers_fn_func_provider_from_url(FfiConverterString.lower(`url`),_status)
 })
 }
-
-
-
-fun `initLogger`() =
-    
-    rustCall() { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_init_logger( _status)
-}
-
-
-fun `implVersion`(): String {
-    return FfiConverterString.lift(
-    rustCall() { _status ->
-    _UniFFILib.INSTANCE.aethers_afd5_impl_version( _status)
-})
-}
-
-
 
 

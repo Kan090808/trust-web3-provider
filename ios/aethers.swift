@@ -19,13 +19,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_aethers_afd5_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_aethers_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_aethers_afd5_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_aethers_rustbuffer_free(self, $0) }
     }
 }
 
@@ -223,6 +223,7 @@ fileprivate enum UniffiInternalError: LocalizedError {
 fileprivate let CALL_SUCCESS: Int8 = 0
 fileprivate let CALL_ERROR: Int8 = 1
 fileprivate let CALL_PANIC: Int8 = 2
+fileprivate let CALL_CANCELLED: Int8 = 3
 
 fileprivate extension RustCallStatus {
     init() {
@@ -238,28 +239,41 @@ fileprivate extension RustCallStatus {
 }
 
 private func rustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
-    try makeRustCall(callback, errorHandler: {
-        $0.deallocate()
-        return UniffiInternalError.unexpectedRustCallError
-    })
+    try makeRustCall(callback, errorHandler: nil)
 }
 
-private func rustCallWithError<T, F: FfiConverter>
-    (_ errorFfiConverter: F.Type, _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T
-    where F.SwiftType: Error, F.FfiType == RustBuffer
-    {
-    try makeRustCall(callback, errorHandler: { return try errorFfiConverter.lift($0) })
+private func rustCallWithError<T>(
+    _ errorHandler: @escaping (RustBuffer) throws -> Error,
+    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
+    try makeRustCall(callback, errorHandler: errorHandler)
 }
 
-private func makeRustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T, errorHandler: (RustBuffer) throws -> Error) throws -> T {
+private func makeRustCall<T>(
+    _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
+    errorHandler: ((RustBuffer) throws -> Error)?
+) throws -> T {
+    uniffiEnsureInitialized()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
+    try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
+    return returnedVal
+}
+
+private func uniffiCheckCallStatus(
+    callStatus: RustCallStatus,
+    errorHandler: ((RustBuffer) throws -> Error)?
+) throws {
     switch callStatus.code {
         case CALL_SUCCESS:
-            return returnedVal
+            return
 
         case CALL_ERROR:
-            throw try errorHandler(callStatus.errorBuf)
+            if let errorHandler = errorHandler {
+                throw try errorHandler(callStatus.errorBuf)
+            } else {
+                callStatus.errorBuf.deallocate()
+                throw UniffiInternalError.unexpectedRustCallError
+            }
 
         case CALL_PANIC:
             // When the rust code sees a panic, it tries to construct a RustBuffer
@@ -271,6 +285,9 @@ private func makeRustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) 
                 callStatus.errorBuf.deallocate()
                 throw UniffiInternalError.rustPanic("Rust panic")
             }
+
+        case CALL_CANCELLED:
+                throw CancellationError()
 
         default:
             throw UniffiInternalError.unexpectedRustCallStatusCode
@@ -360,7 +377,7 @@ public class ChainProvider: ChainProviderProtocol {
     }
 
     deinit {
-        try! rustCall { ffi_aethers_afd5_ChainProvider_object_free(pointer, $0) }
+        try! rustCall { uniffi_aethers_fn_free_chainprovider(pointer, $0) }
     }
 
     
@@ -368,7 +385,6 @@ public class ChainProvider: ChainProviderProtocol {
     
     
 }
-
 
 public struct FfiConverterTypeChainProvider: FfiConverter {
     typealias FfiType = UnsafeMutableRawPointer
@@ -401,12 +417,305 @@ public struct FfiConverterTypeChainProvider: FfiConverter {
 }
 
 
+public func FfiConverterTypeChainProvider_lift(_ pointer: UnsafeMutableRawPointer) throws -> ChainProvider {
+    return try FfiConverterTypeChainProvider.lift(pointer)
+}
+
+public func FfiConverterTypeChainProvider_lower(_ value: ChainProvider) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeChainProvider.lower(value)
+}
+
+
+public protocol Erc20ContractProtocol {
+    func tokenApprove(spender: String, value: UInt64)  throws -> String
+    func tokenBalanceOf(address: String)  throws -> UInt64
+    func tokenDecimals()  throws -> UInt64
+    func tokenTransfer(to: String, value: UInt64)  throws -> String
+    func tokenTransferFrom(from: String, to: String, value: UInt64)  throws -> String
+    func transferBridgeOut(to: String, value: UInt64, chainId: UInt64, chainType: UInt64)  throws -> String
+    
+}
+
+public class Erc20Contract: Erc20ContractProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+    required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+    public convenience init(address: String, provider: ChainProvider, wallet: Wallet) throws {
+        self.init(unsafeFromRawPointer: try rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_constructor_erc20contract_new(
+        FfiConverterString.lower(address),
+        FfiConverterTypeChainProvider.lower(provider),
+        FfiConverterTypeWallet.lower(wallet),$0)
+})
+    }
+
+    deinit {
+        try! rustCall { uniffi_aethers_fn_free_erc20contract(pointer, $0) }
+    }
+
+    
+
+    
+    
+
+    public func tokenApprove(spender: String, value: UInt64) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc20contract_token_approve(self.pointer, 
+        FfiConverterString.lower(spender),
+        FfiConverterUInt64.lower(value),$0
+    )
+}
+        )
+    }
+
+    public func tokenBalanceOf(address: String) throws -> UInt64 {
+        return try  FfiConverterUInt64.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc20contract_token_balance_of(self.pointer, 
+        FfiConverterString.lower(address),$0
+    )
+}
+        )
+    }
+
+    public func tokenDecimals() throws -> UInt64 {
+        return try  FfiConverterUInt64.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc20contract_token_decimals(self.pointer, $0
+    )
+}
+        )
+    }
+
+    public func tokenTransfer(to: String, value: UInt64) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc20contract_token_transfer(self.pointer, 
+        FfiConverterString.lower(to),
+        FfiConverterUInt64.lower(value),$0
+    )
+}
+        )
+    }
+
+    public func tokenTransferFrom(from: String, to: String, value: UInt64) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc20contract_token_transfer_from(self.pointer, 
+        FfiConverterString.lower(from),
+        FfiConverterString.lower(to),
+        FfiConverterUInt64.lower(value),$0
+    )
+}
+        )
+    }
+
+    public func transferBridgeOut(to: String, value: UInt64, chainId: UInt64, chainType: UInt64) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc20contract_transfer_bridge_out(self.pointer, 
+        FfiConverterString.lower(to),
+        FfiConverterUInt64.lower(value),
+        FfiConverterUInt64.lower(chainId),
+        FfiConverterUInt64.lower(chainType),$0
+    )
+}
+        )
+    }
+}
+
+public struct FfiConverterTypeErc20Contract: FfiConverter {
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = Erc20Contract
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Erc20Contract {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: Erc20Contract, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> Erc20Contract {
+        return Erc20Contract(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: Erc20Contract) -> UnsafeMutableRawPointer {
+        return value.pointer
+    }
+}
+
+
+public func FfiConverterTypeErc20Contract_lift(_ pointer: UnsafeMutableRawPointer) throws -> Erc20Contract {
+    return try FfiConverterTypeErc20Contract.lift(pointer)
+}
+
+public func FfiConverterTypeErc20Contract_lower(_ value: Erc20Contract) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeErc20Contract.lower(value)
+}
+
+
+public protocol Erc721ContractProtocol {
+    func nftCurrentPrice()  throws -> UInt64
+    func nftMint(to: String, value: UInt64)  throws -> String
+    func nftOwnerOf(tokenId: UInt64)  throws -> String
+    func nftSafeTransferFrom(to: String, tokenId: UInt64)  throws -> String
+    func nftTotalSupply()  throws -> UInt64
+    
+}
+
+public class Erc721Contract: Erc721ContractProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+    required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+    public convenience init(address: String, provider: ChainProvider, wallet: Wallet) throws {
+        self.init(unsafeFromRawPointer: try rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_constructor_erc721contract_new(
+        FfiConverterString.lower(address),
+        FfiConverterTypeChainProvider.lower(provider),
+        FfiConverterTypeWallet.lower(wallet),$0)
+})
+    }
+
+    deinit {
+        try! rustCall { uniffi_aethers_fn_free_erc721contract(pointer, $0) }
+    }
+
+    
+
+    
+    
+
+    public func nftCurrentPrice() throws -> UInt64 {
+        return try  FfiConverterUInt64.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc721contract_nft_current_price(self.pointer, $0
+    )
+}
+        )
+    }
+
+    public func nftMint(to: String, value: UInt64) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc721contract_nft_mint(self.pointer, 
+        FfiConverterString.lower(to),
+        FfiConverterUInt64.lower(value),$0
+    )
+}
+        )
+    }
+
+    public func nftOwnerOf(tokenId: UInt64) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc721contract_nft_owner_of(self.pointer, 
+        FfiConverterUInt64.lower(tokenId),$0
+    )
+}
+        )
+    }
+
+    public func nftSafeTransferFrom(to: String, tokenId: UInt64) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc721contract_nft_safe_transfer_from(self.pointer, 
+        FfiConverterString.lower(to),
+        FfiConverterUInt64.lower(tokenId),$0
+    )
+}
+        )
+    }
+
+    public func nftTotalSupply() throws -> UInt64 {
+        return try  FfiConverterUInt64.lift(
+            try 
+    rustCallWithError(FfiConverterTypeContractError.lift) {
+    uniffi_aethers_fn_method_erc721contract_nft_total_supply(self.pointer, $0
+    )
+}
+        )
+    }
+}
+
+public struct FfiConverterTypeErc721Contract: FfiConverter {
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = Erc721Contract
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Erc721Contract {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: Erc721Contract, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> Erc721Contract {
+        return Erc721Contract(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: Erc721Contract) -> UnsafeMutableRawPointer {
+        return value.pointer
+    }
+}
+
+
+public func FfiConverterTypeErc721Contract_lift(_ pointer: UnsafeMutableRawPointer) throws -> Erc721Contract {
+    return try FfiConverterTypeErc721Contract.lift(pointer)
+}
+
+public func FfiConverterTypeErc721Contract_lower(_ value: Erc721Contract) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeErc721Contract.lower(value)
+}
+
+
 public protocol WalletProtocol {
-    func `requestAccounts`()  -> [String]
-    func `encryptJson`() throws -> String
-    func `recoverPhrase`(`password`: String) throws -> String
-    func `signTypedMessage`(`message`: [UInt8]) throws -> String
-    func `sendTransaction`(`provider`: ChainProvider, `payload`: String) throws -> String
+    func chainId()   -> UInt64
+    func encryptJson()  throws -> String
+    func recoverPhrase(password: String)  throws -> String
+    func requestAccounts()   -> [String]
+    func sendTransaction(provider: ChainProvider, payload: String)  throws -> String
+    func signTypedMessage(message: [UInt8])  throws -> String
+    func switchChain(chainId: UInt64)  
     
 }
 
@@ -419,77 +728,99 @@ public class Wallet: WalletProtocol {
     required init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
         self.pointer = pointer
     }
-    public convenience init(`password`: String, `chainId`: UInt64)  {
-        self.init(unsafeFromRawPointer: try!
-    
-    rustCall() {
-    
-    aethers_afd5_Wallet_new(
-        FfiConverterString.lower(`password`), 
-        FfiConverterUInt64.lower(`chainId`), $0)
+    public convenience init(password: String, chainId: UInt64)  {
+        self.init(unsafeFromRawPointer: try! rustCall() {
+    uniffi_aethers_fn_constructor_wallet_new(
+        FfiConverterString.lower(password),
+        FfiConverterUInt64.lower(chainId),$0)
 })
     }
 
     deinit {
-        try! rustCall { ffi_aethers_afd5_Wallet_object_free(pointer, $0) }
+        try! rustCall { uniffi_aethers_fn_free_wallet(pointer, $0) }
     }
 
     
 
     
-    public func `requestAccounts`()  -> [String] {
-        return try! FfiConverterSequenceString.lift(
-            try!
+    
+
+    public func chainId()  -> UInt64 {
+        return try!  FfiConverterUInt64.lift(
+            try! 
     rustCall() {
     
-    aethers_afd5_Wallet_request_accounts(self.pointer, $0
+    uniffi_aethers_fn_method_wallet_chain_id(self.pointer, $0
     )
 }
         )
     }
-    public func `encryptJson`() throws -> String {
-        return try FfiConverterString.lift(
-            try
-    rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_afd5_Wallet_encrypt_json(self.pointer, $0
-    )
-}
-        )
-    }
-    public func `recoverPhrase`(`password`: String) throws -> String {
-        return try FfiConverterString.lift(
-            try
-    rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_afd5_Wallet_recover_phrase(self.pointer, 
-        FfiConverterString.lower(`password`), $0
-    )
-}
-        )
-    }
-    public func `signTypedMessage`(`message`: [UInt8]) throws -> String {
-        return try FfiConverterString.lift(
-            try
-    rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_afd5_Wallet_sign_typed_message(self.pointer, 
-        FfiConverterSequenceUInt8.lower(`message`), $0
-    )
-}
-        )
-    }
-    public func `sendTransaction`(`provider`: ChainProvider, `payload`: String) throws -> String {
-        return try FfiConverterString.lift(
-            try
-    rustCallWithError(FfiConverterTypeWalletError.self) {
-    aethers_afd5_Wallet_send_transaction(self.pointer, 
-        FfiConverterTypeChainProvider.lower(`provider`), 
-        FfiConverterString.lower(`payload`), $0
-    )
-}
-        )
-    }
-    
-}
 
+    public func encryptJson() throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeWalletError.lift) {
+    uniffi_aethers_fn_method_wallet_encrypt_json(self.pointer, $0
+    )
+}
+        )
+    }
+
+    public func recoverPhrase(password: String) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeWalletError.lift) {
+    uniffi_aethers_fn_method_wallet_recover_phrase(self.pointer, 
+        FfiConverterString.lower(password),$0
+    )
+}
+        )
+    }
+
+    public func requestAccounts()  -> [String] {
+        return try!  FfiConverterSequenceString.lift(
+            try! 
+    rustCall() {
+    
+    uniffi_aethers_fn_method_wallet_request_accounts(self.pointer, $0
+    )
+}
+        )
+    }
+
+    public func sendTransaction(provider: ChainProvider, payload: String) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeWalletError.lift) {
+    uniffi_aethers_fn_method_wallet_send_transaction(self.pointer, 
+        FfiConverterTypeChainProvider.lower(provider),
+        FfiConverterString.lower(payload),$0
+    )
+}
+        )
+    }
+
+    public func signTypedMessage(message: [UInt8]) throws -> String {
+        return try  FfiConverterString.lift(
+            try 
+    rustCallWithError(FfiConverterTypeWalletError.lift) {
+    uniffi_aethers_fn_method_wallet_sign_typed_message(self.pointer, 
+        FfiConverterSequenceUInt8.lower(message),$0
+    )
+}
+        )
+    }
+
+    public func switchChain(chainId: UInt64)  {
+        try! 
+    rustCall() {
+    
+    uniffi_aethers_fn_method_wallet_switch_chain(self.pointer, 
+        FfiConverterUInt64.lower(chainId),$0
+    )
+}
+    }
+}
 
 public struct FfiConverterTypeWallet: FfiConverter {
     typealias FfiType = UnsafeMutableRawPointer
@@ -522,6 +853,120 @@ public struct FfiConverterTypeWallet: FfiConverter {
 }
 
 
+public func FfiConverterTypeWallet_lift(_ pointer: UnsafeMutableRawPointer) throws -> Wallet {
+    return try FfiConverterTypeWallet.lift(pointer)
+}
+
+public func FfiConverterTypeWallet_lower(_ value: Wallet) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeWallet.lower(value)
+}
+
+public enum ContractError {
+
+    
+    
+    // Simple error enums only carry a message
+    case InvalidAddress(message: String)
+    
+    // Simple error enums only carry a message
+    case LoadAbiError(message: String)
+    
+    // Simple error enums only carry a message
+    case Serde(message: String)
+    
+    // Simple error enums only carry a message
+    case AbiError(message: String)
+    
+    // Simple error enums only carry a message
+    case Provider(message: String)
+    
+    // Simple error enums only carry a message
+    case Wallet(message: String)
+    
+    // Simple error enums only carry a message
+    case ChainIdMismatch(message: String)
+    
+
+    fileprivate static func uniffiErrorHandler(_ error: RustBuffer) throws -> Error {
+        return try FfiConverterTypeContractError.lift(error)
+    }
+}
+
+
+public struct FfiConverterTypeContractError: FfiConverterRustBuffer {
+    typealias SwiftType = ContractError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ContractError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .InvalidAddress(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .LoadAbiError(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .Serde(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .AbiError(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .Provider(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 6: return .Wallet(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 7: return .ChainIdMismatch(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ContractError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        case .InvalidAddress(_ /* message is ignored*/):
+            writeInt(&buf, Int32(1))
+        case .LoadAbiError(_ /* message is ignored*/):
+            writeInt(&buf, Int32(2))
+        case .Serde(_ /* message is ignored*/):
+            writeInt(&buf, Int32(3))
+        case .AbiError(_ /* message is ignored*/):
+            writeInt(&buf, Int32(4))
+        case .Provider(_ /* message is ignored*/):
+            writeInt(&buf, Int32(5))
+        case .Wallet(_ /* message is ignored*/):
+            writeInt(&buf, Int32(6))
+        case .ChainIdMismatch(_ /* message is ignored*/):
+            writeInt(&buf, Int32(7))
+
+        
+        }
+    }
+}
+
+
+extension ContractError: Equatable, Hashable {}
+
+extension ContractError: Error { }
+
 public enum ProviderError {
 
     
@@ -538,7 +983,12 @@ public enum ProviderError {
     // Simple error enums only carry a message
     case FromAddressMissing(message: String)
     
+
+    fileprivate static func uniffiErrorHandler(_ error: RustBuffer) throws -> Error {
+        return try FfiConverterTypeProviderError.lift(error)
+    }
 }
+
 
 public struct FfiConverterTypeProviderError: FfiConverterRustBuffer {
     typealias SwiftType = ProviderError
@@ -577,18 +1027,14 @@ public struct FfiConverterTypeProviderError: FfiConverterRustBuffer {
         
 
         
-        case let .Runtime(message):
+        case .Runtime(_ /* message is ignored*/):
             writeInt(&buf, Int32(1))
-            FfiConverterString.write(message, into: &buf)
-        case let .Parse(message):
+        case .Parse(_ /* message is ignored*/):
             writeInt(&buf, Int32(2))
-            FfiConverterString.write(message, into: &buf)
-        case let .Inner(message):
+        case .Inner(_ /* message is ignored*/):
             writeInt(&buf, Int32(3))
-            FfiConverterString.write(message, into: &buf)
-        case let .FromAddressMissing(message):
+        case .FromAddressMissing(_ /* message is ignored*/):
             writeInt(&buf, Int32(4))
-            FfiConverterString.write(message, into: &buf)
 
         
         }
@@ -599,7 +1045,6 @@ public struct FfiConverterTypeProviderError: FfiConverterRustBuffer {
 extension ProviderError: Equatable, Hashable {}
 
 extension ProviderError: Error { }
-
 
 public enum WalletError {
 
@@ -638,7 +1083,24 @@ public enum WalletError {
     // Simple error enums only carry a message
     case InsufficientGasFunds(message: String)
     
+    // Simple error enums only carry a message
+    case InvalidAddress(message: String)
+    
+    // Simple error enums only carry a message
+    case AbiError(message: String)
+    
+    // Simple error enums only carry a message
+    case FromAddressMismatch(message: String)
+    
+    // Simple error enums only carry a message
+    case ChainIdMismatch(message: String)
+    
+
+    fileprivate static func uniffiErrorHandler(_ error: RustBuffer) throws -> Error {
+        return try FfiConverterTypeWalletError.lift(error)
+    }
 }
+
 
 public struct FfiConverterTypeWalletError: FfiConverterRustBuffer {
     typealias SwiftType = WalletError
@@ -694,6 +1156,22 @@ public struct FfiConverterTypeWalletError: FfiConverterRustBuffer {
             message: try FfiConverterString.read(from: &buf)
         )
         
+        case 12: return .InvalidAddress(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 13: return .AbiError(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 14: return .FromAddressMismatch(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 15: return .ChainIdMismatch(
+            message: try FfiConverterString.read(from: &buf)
+        )
+        
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -705,39 +1183,36 @@ public struct FfiConverterTypeWalletError: FfiConverterRustBuffer {
         
 
         
-        case let .DerivationParse(message):
+        case .DerivationParse(_ /* message is ignored*/):
             writeInt(&buf, Int32(1))
-            FfiConverterString.write(message, into: &buf)
-        case let .Mnemonic(message):
+        case .Mnemonic(_ /* message is ignored*/):
             writeInt(&buf, Int32(2))
-            FfiConverterString.write(message, into: &buf)
-        case let .Signature(message):
+        case .Signature(_ /* message is ignored*/):
             writeInt(&buf, Int32(3))
-            FfiConverterString.write(message, into: &buf)
-        case let .Serde(message):
+        case .Serde(_ /* message is ignored*/):
             writeInt(&buf, Int32(4))
-            FfiConverterString.write(message, into: &buf)
-        case let .Encrypt(message):
+        case .Encrypt(_ /* message is ignored*/):
             writeInt(&buf, Int32(5))
-            FfiConverterString.write(message, into: &buf)
-        case let .Decrypt(message):
+        case .Decrypt(_ /* message is ignored*/):
             writeInt(&buf, Int32(6))
-            FfiConverterString.write(message, into: &buf)
-        case let .Utf8(message):
+        case .Utf8(_ /* message is ignored*/):
             writeInt(&buf, Int32(7))
-            FfiConverterString.write(message, into: &buf)
-        case let .WrongPassword(message):
+        case .WrongPassword(_ /* message is ignored*/):
             writeInt(&buf, Int32(8))
-            FfiConverterString.write(message, into: &buf)
-        case let .EthSignature(message):
+        case .EthSignature(_ /* message is ignored*/):
             writeInt(&buf, Int32(9))
-            FfiConverterString.write(message, into: &buf)
-        case let .Provider(message):
+        case .Provider(_ /* message is ignored*/):
             writeInt(&buf, Int32(10))
-            FfiConverterString.write(message, into: &buf)
-        case let .InsufficientGasFunds(message):
+        case .InsufficientGasFunds(_ /* message is ignored*/):
             writeInt(&buf, Int32(11))
-            FfiConverterString.write(message, into: &buf)
+        case .InvalidAddress(_ /* message is ignored*/):
+            writeInt(&buf, Int32(12))
+        case .AbiError(_ /* message is ignored*/):
+            writeInt(&buf, Int32(13))
+        case .FromAddressMismatch(_ /* message is ignored*/):
+            writeInt(&buf, Int32(14))
+        case .ChainIdMismatch(_ /* message is ignored*/):
+            writeInt(&buf, Int32(15))
 
         
         }
@@ -793,115 +1268,184 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     }
 }
 
-public func `ecRecover`(`signature`: [UInt8], `message`: [UInt8]) throws -> String {
-    return try FfiConverterString.lift(
-        try
-    
-    rustCallWithError(FfiConverterTypeWalletError.self) {
-    
-    aethers_afd5_ec_recover(
-        FfiConverterSequenceUInt8.lower(`signature`), 
-        FfiConverterSequenceUInt8.lower(`message`), $0)
+public func decryptJson(encrypted: String, password: String, chainId: UInt64) throws -> Wallet {
+    return try  FfiConverterTypeWallet.lift(
+        try rustCallWithError(FfiConverterTypeWalletError.lift) {
+    uniffi_aethers_fn_func_decrypt_json(
+        FfiConverterString.lower(encrypted),
+        FfiConverterString.lower(password),
+        FfiConverterUInt64.lower(chainId),$0)
 }
     )
 }
 
-
-
-public func `decryptJsonBytes`(`encrypted`: [UInt8], `password`: [UInt8], `chainId`: UInt64) throws -> Wallet {
-    return try FfiConverterTypeWallet.lift(
-        try
-    
-    rustCallWithError(FfiConverterTypeWalletError.self) {
-    
-    aethers_afd5_decrypt_json_bytes(
-        FfiConverterSequenceUInt8.lower(`encrypted`), 
-        FfiConverterSequenceUInt8.lower(`password`), 
-        FfiConverterUInt64.lower(`chainId`), $0)
+public func decryptJsonBytes(encrypted: [UInt8], password: [UInt8], chainId: UInt64) throws -> Wallet {
+    return try  FfiConverterTypeWallet.lift(
+        try rustCallWithError(FfiConverterTypeWalletError.lift) {
+    uniffi_aethers_fn_func_decrypt_json_bytes(
+        FfiConverterSequenceUInt8.lower(encrypted),
+        FfiConverterSequenceUInt8.lower(password),
+        FfiConverterUInt64.lower(chainId),$0)
 }
     )
 }
 
-
-
-public func `decryptJson`(`encrypted`: String, `password`: String, `chainId`: UInt64) throws -> Wallet {
-    return try FfiConverterTypeWallet.lift(
-        try
-    
-    rustCallWithError(FfiConverterTypeWalletError.self) {
-    
-    aethers_afd5_decrypt_json(
-        FfiConverterString.lower(`encrypted`), 
-        FfiConverterString.lower(`password`), 
-        FfiConverterUInt64.lower(`chainId`), $0)
+public func ecRecover(signature: [UInt8], message: [UInt8]) throws -> String {
+    return try  FfiConverterString.lift(
+        try rustCallWithError(FfiConverterTypeWalletError.lift) {
+    uniffi_aethers_fn_func_ec_recover(
+        FfiConverterSequenceUInt8.lower(signature),
+        FfiConverterSequenceUInt8.lower(message),$0)
 }
     )
 }
 
-
-
-public func `fromMnemonic`(`mnemonic`: String, `password`: String, `chainId`: UInt64) throws -> Wallet {
-    return try FfiConverterTypeWallet.lift(
-        try
-    
-    rustCallWithError(FfiConverterTypeWalletError.self) {
-    
-    aethers_afd5_from_mnemonic(
-        FfiConverterString.lower(`mnemonic`), 
-        FfiConverterString.lower(`password`), 
-        FfiConverterUInt64.lower(`chainId`), $0)
+public func fromMnemonic(mnemonic: String, password: String, chainId: UInt64) throws -> Wallet {
+    return try  FfiConverterTypeWallet.lift(
+        try rustCallWithError(FfiConverterTypeWalletError.lift) {
+    uniffi_aethers_fn_func_from_mnemonic(
+        FfiConverterString.lower(mnemonic),
+        FfiConverterString.lower(password),
+        FfiConverterUInt64.lower(chainId),$0)
 }
     )
 }
 
-
-
-public func `providerFromUrl`(`url`: String) throws -> ChainProvider {
-    return try FfiConverterTypeChainProvider.lift(
-        try
-    
-    rustCallWithError(FfiConverterTypeProviderError.self) {
-    
-    aethers_afd5_provider_from_url(
-        FfiConverterString.lower(`url`), $0)
+public func implVersion()  -> String {
+    return try!  FfiConverterString.lift(
+        try! rustCall() {
+    uniffi_aethers_fn_func_impl_version($0)
 }
     )
 }
 
-
-
-public func `initLogger`()  {
-    try!
-    
-    rustCall() {
-    
-    aethers_afd5_init_logger($0)
+public func initLogger()  {
+    try! rustCall() {
+    uniffi_aethers_fn_func_init_logger($0)
 }
 }
 
 
-public func `implVersion`()  -> String {
-    return try! FfiConverterString.lift(
-        try!
-    
-    rustCall() {
-    
-    aethers_afd5_impl_version($0)
+
+public func providerFromUrl(url: String) throws -> ChainProvider {
+    return try  FfiConverterTypeChainProvider.lift(
+        try rustCallWithError(FfiConverterTypeProviderError.lift) {
+    uniffi_aethers_fn_func_provider_from_url(
+        FfiConverterString.lower(url),$0)
 }
     )
 }
 
+private enum InitializationResult {
+    case ok
+    case contractVersionMismatch
+    case apiChecksumMismatch
+}
+// Use a global variables to perform the versioning checks. Swift ensures that
+// the code inside is only computed once.
+private var initializationResult: InitializationResult {
+    // Get the bindings contract version from our ComponentInterface
+    let bindings_contract_version = 24
+    // Get the scaffolding contract version by calling the into the dylib
+    let scaffolding_contract_version = ffi_aethers_uniffi_contract_version()
+    if bindings_contract_version != scaffolding_contract_version {
+        return InitializationResult.contractVersionMismatch
+    }
+    if (uniffi_aethers_checksum_func_decrypt_json() != 15248) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_func_decrypt_json_bytes() != 52540) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_func_ec_recover() != 23223) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_func_from_mnemonic() != 35211) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_func_impl_version() != 33889) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_func_init_logger() != 49144) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_func_provider_from_url() != 41634) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc20contract_token_approve() != 18570) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc20contract_token_balance_of() != 13092) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc20contract_token_decimals() != 42934) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc20contract_token_transfer() != 13383) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc20contract_token_transfer_from() != 10329) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc20contract_transfer_bridge_out() != 8271) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc721contract_nft_current_price() != 43150) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc721contract_nft_mint() != 8536) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc721contract_nft_owner_of() != 40828) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc721contract_nft_safe_transfer_from() != 40845) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_erc721contract_nft_total_supply() != 19495) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_wallet_chain_id() != 29198) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_wallet_encrypt_json() != 44651) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_wallet_recover_phrase() != 16706) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_wallet_request_accounts() != 15608) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_wallet_send_transaction() != 25120) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_wallet_sign_typed_message() != 23720) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_method_wallet_switch_chain() != 35509) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_constructor_erc20contract_new() != 18221) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_constructor_erc721contract_new() != 34681) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_aethers_checksum_constructor_wallet_new() != 11262) {
+        return InitializationResult.apiChecksumMismatch
+    }
 
+    return InitializationResult.ok
+}
 
-/**
- * Top level initializers and tear down methods.
- *
- * This is generated by uniffi.
- */
-public enum AethersLifecycle {
-    /**
-     * Initialize the FFI and Rust library. This should be only called once per application.
-     */
-    func initialize() {
+private func uniffiEnsureInitialized() {
+    switch initializationResult {
+    case .ok:
+        break
+    case .contractVersionMismatch:
+        fatalError("UniFFI contract version mismatch: try cleaning and rebuilding your project")
+    case .apiChecksumMismatch:
+        fatalError("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }

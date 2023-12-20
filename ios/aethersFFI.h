@@ -4,6 +4,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // The following structs are used to implement the lowest level
@@ -28,7 +29,19 @@ typedef struct RustBuffer
     uint8_t *_Nullable data;
 } RustBuffer;
 
-typedef int32_t (*ForeignCallback)(uint64_t, int32_t, RustBuffer, RustBuffer *_Nonnull);
+typedef int32_t (*ForeignCallback)(uint64_t, int32_t, const uint8_t *_Nonnull, int32_t, RustBuffer *_Nonnull);
+
+// Task defined in Rust that Swift executes
+typedef void (*UniFfiRustTaskCallback)(const void * _Nullable, int8_t);
+
+// Callback to execute Rust tasks using a Swift Task
+//
+// Args:
+//   executor: ForeignExecutor lowered into a size_t value
+//   delay: Delay in MS
+//   task: UniFfiRustTaskCallback to call
+//   task_data: data to pass the task callback
+typedef int8_t (*UniFfiForeignExecutorCallback)(size_t, uint32_t, UniFfiRustTaskCallback _Nullable, const void * _Nullable);
 
 typedef struct ForeignBytes
 {
@@ -46,79 +59,275 @@ typedef struct RustCallStatus {
 // ⚠️ increment the version suffix in all instances of UNIFFI_SHARED_HEADER_V4 in this file.           ⚠️
 #endif // def UNIFFI_SHARED_H
 
-void ffi_aethers_afd5_Wallet_object_free(
-      void*_Nonnull ptr,
-    RustCallStatus *_Nonnull out_status
-    );
-void*_Nonnull aethers_afd5_Wallet_new(
-      RustBuffer password,uint64_t chain_id,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer aethers_afd5_Wallet_request_accounts(
-      void*_Nonnull ptr,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer aethers_afd5_Wallet_encrypt_json(
-      void*_Nonnull ptr,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer aethers_afd5_Wallet_recover_phrase(
-      void*_Nonnull ptr,RustBuffer password,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer aethers_afd5_Wallet_sign_typed_message(
-      void*_Nonnull ptr,RustBuffer message,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer aethers_afd5_Wallet_send_transaction(
-      void*_Nonnull ptr,void*_Nonnull provider,RustBuffer payload,
-    RustCallStatus *_Nonnull out_status
-    );
-void ffi_aethers_afd5_ChainProvider_object_free(
-      void*_Nonnull ptr,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer aethers_afd5_ec_recover(
-      RustBuffer signature,RustBuffer message,
-    RustCallStatus *_Nonnull out_status
-    );
-void*_Nonnull aethers_afd5_decrypt_json_bytes(
-      RustBuffer encrypted,RustBuffer password,uint64_t chain_id,
-    RustCallStatus *_Nonnull out_status
-    );
-void*_Nonnull aethers_afd5_decrypt_json(
-      RustBuffer encrypted,RustBuffer password,uint64_t chain_id,
-    RustCallStatus *_Nonnull out_status
-    );
-void*_Nonnull aethers_afd5_from_mnemonic(
-      RustBuffer mnemonic,RustBuffer password,uint64_t chain_id,
-    RustCallStatus *_Nonnull out_status
-    );
-void*_Nonnull aethers_afd5_provider_from_url(
-      RustBuffer url,
-    RustCallStatus *_Nonnull out_status
-    );
-void aethers_afd5_init_logger(
-      
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer aethers_afd5_impl_version(
-      
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer ffi_aethers_afd5_rustbuffer_alloc(
-      int32_t size,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer ffi_aethers_afd5_rustbuffer_from_bytes(
-      ForeignBytes bytes,
-    RustCallStatus *_Nonnull out_status
-    );
-void ffi_aethers_afd5_rustbuffer_free(
-      RustBuffer buf,
-    RustCallStatus *_Nonnull out_status
-    );
-RustBuffer ffi_aethers_afd5_rustbuffer_reserve(
-      RustBuffer buf,int32_t additional,
-    RustCallStatus *_Nonnull out_status
-    );
+// Continuation callback for UniFFI Futures
+typedef void (*UniFfiRustFutureContinuation)(void * _Nonnull, int8_t);
+
+// Scaffolding functions
+void uniffi_aethers_fn_free_chainprovider(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+void uniffi_aethers_fn_free_erc20contract(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+void*_Nonnull uniffi_aethers_fn_constructor_erc20contract_new(RustBuffer address, void*_Nonnull provider, void*_Nonnull wallet, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_erc20contract_token_approve(void*_Nonnull ptr, RustBuffer spender, uint64_t value, RustCallStatus *_Nonnull out_status
+);
+uint64_t uniffi_aethers_fn_method_erc20contract_token_balance_of(void*_Nonnull ptr, RustBuffer address, RustCallStatus *_Nonnull out_status
+);
+uint64_t uniffi_aethers_fn_method_erc20contract_token_decimals(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_erc20contract_token_transfer(void*_Nonnull ptr, RustBuffer to, uint64_t value, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_erc20contract_token_transfer_from(void*_Nonnull ptr, RustBuffer from, RustBuffer to, uint64_t value, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_erc20contract_transfer_bridge_out(void*_Nonnull ptr, RustBuffer to, uint64_t value, uint64_t chain_id, uint64_t chain_type, RustCallStatus *_Nonnull out_status
+);
+void uniffi_aethers_fn_free_erc721contract(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+void*_Nonnull uniffi_aethers_fn_constructor_erc721contract_new(RustBuffer address, void*_Nonnull provider, void*_Nonnull wallet, RustCallStatus *_Nonnull out_status
+);
+uint64_t uniffi_aethers_fn_method_erc721contract_nft_current_price(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_erc721contract_nft_mint(void*_Nonnull ptr, RustBuffer to, uint64_t value, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_erc721contract_nft_owner_of(void*_Nonnull ptr, uint64_t token_id, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_erc721contract_nft_safe_transfer_from(void*_Nonnull ptr, RustBuffer to, uint64_t token_id, RustCallStatus *_Nonnull out_status
+);
+uint64_t uniffi_aethers_fn_method_erc721contract_nft_total_supply(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+void uniffi_aethers_fn_free_wallet(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+void*_Nonnull uniffi_aethers_fn_constructor_wallet_new(RustBuffer password, uint64_t chain_id, RustCallStatus *_Nonnull out_status
+);
+uint64_t uniffi_aethers_fn_method_wallet_chain_id(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_wallet_encrypt_json(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_wallet_recover_phrase(void*_Nonnull ptr, RustBuffer password, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_wallet_request_accounts(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_wallet_send_transaction(void*_Nonnull ptr, void*_Nonnull provider, RustBuffer payload, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_method_wallet_sign_typed_message(void*_Nonnull ptr, RustBuffer message, RustCallStatus *_Nonnull out_status
+);
+void uniffi_aethers_fn_method_wallet_switch_chain(void*_Nonnull ptr, uint64_t chain_id, RustCallStatus *_Nonnull out_status
+);
+void*_Nonnull uniffi_aethers_fn_func_decrypt_json(RustBuffer encrypted, RustBuffer password, uint64_t chain_id, RustCallStatus *_Nonnull out_status
+);
+void*_Nonnull uniffi_aethers_fn_func_decrypt_json_bytes(RustBuffer encrypted, RustBuffer password, uint64_t chain_id, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_func_ec_recover(RustBuffer signature, RustBuffer message, RustCallStatus *_Nonnull out_status
+);
+void*_Nonnull uniffi_aethers_fn_func_from_mnemonic(RustBuffer mnemonic, RustBuffer password, uint64_t chain_id, RustCallStatus *_Nonnull out_status
+);
+RustBuffer uniffi_aethers_fn_func_impl_version(RustCallStatus *_Nonnull out_status
+    
+);
+void uniffi_aethers_fn_func_init_logger(RustCallStatus *_Nonnull out_status
+    
+);
+void*_Nonnull uniffi_aethers_fn_func_provider_from_url(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+RustBuffer ffi_aethers_rustbuffer_alloc(int32_t size, RustCallStatus *_Nonnull out_status
+);
+RustBuffer ffi_aethers_rustbuffer_from_bytes(ForeignBytes bytes, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rustbuffer_free(RustBuffer buf, RustCallStatus *_Nonnull out_status
+);
+RustBuffer ffi_aethers_rustbuffer_reserve(RustBuffer buf, int32_t additional, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_continuation_callback_set(UniFfiRustFutureContinuation _Nonnull callback
+);
+void ffi_aethers_rust_future_poll_u8(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_u8(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_u8(void* _Nonnull handle
+);
+uint8_t ffi_aethers_rust_future_complete_u8(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_i8(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_i8(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_i8(void* _Nonnull handle
+);
+int8_t ffi_aethers_rust_future_complete_i8(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_u16(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_u16(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_u16(void* _Nonnull handle
+);
+uint16_t ffi_aethers_rust_future_complete_u16(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_i16(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_i16(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_i16(void* _Nonnull handle
+);
+int16_t ffi_aethers_rust_future_complete_i16(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_u32(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_u32(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_u32(void* _Nonnull handle
+);
+uint32_t ffi_aethers_rust_future_complete_u32(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_i32(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_i32(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_i32(void* _Nonnull handle
+);
+int32_t ffi_aethers_rust_future_complete_i32(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_u64(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_u64(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_u64(void* _Nonnull handle
+);
+uint64_t ffi_aethers_rust_future_complete_u64(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_i64(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_i64(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_i64(void* _Nonnull handle
+);
+int64_t ffi_aethers_rust_future_complete_i64(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_f32(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_f32(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_f32(void* _Nonnull handle
+);
+float ffi_aethers_rust_future_complete_f32(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_f64(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_f64(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_f64(void* _Nonnull handle
+);
+double ffi_aethers_rust_future_complete_f64(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_pointer(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_pointer(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_pointer(void* _Nonnull handle
+);
+void*_Nonnull ffi_aethers_rust_future_complete_pointer(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_rust_buffer(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_rust_buffer(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_rust_buffer(void* _Nonnull handle
+);
+RustBuffer ffi_aethers_rust_future_complete_rust_buffer(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+void ffi_aethers_rust_future_poll_void(void* _Nonnull handle, void* _Nonnull uniffi_callback
+);
+void ffi_aethers_rust_future_cancel_void(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_free_void(void* _Nonnull handle
+);
+void ffi_aethers_rust_future_complete_void(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+);
+uint16_t uniffi_aethers_checksum_func_decrypt_json(void
+    
+);
+uint16_t uniffi_aethers_checksum_func_decrypt_json_bytes(void
+    
+);
+uint16_t uniffi_aethers_checksum_func_ec_recover(void
+    
+);
+uint16_t uniffi_aethers_checksum_func_from_mnemonic(void
+    
+);
+uint16_t uniffi_aethers_checksum_func_impl_version(void
+    
+);
+uint16_t uniffi_aethers_checksum_func_init_logger(void
+    
+);
+uint16_t uniffi_aethers_checksum_func_provider_from_url(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc20contract_token_approve(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc20contract_token_balance_of(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc20contract_token_decimals(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc20contract_token_transfer(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc20contract_token_transfer_from(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc20contract_transfer_bridge_out(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc721contract_nft_current_price(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc721contract_nft_mint(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc721contract_nft_owner_of(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc721contract_nft_safe_transfer_from(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_erc721contract_nft_total_supply(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_wallet_chain_id(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_wallet_encrypt_json(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_wallet_recover_phrase(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_wallet_request_accounts(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_wallet_send_transaction(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_wallet_sign_typed_message(void
+    
+);
+uint16_t uniffi_aethers_checksum_method_wallet_switch_chain(void
+    
+);
+uint16_t uniffi_aethers_checksum_constructor_erc20contract_new(void
+    
+);
+uint16_t uniffi_aethers_checksum_constructor_erc721contract_new(void
+    
+);
+uint16_t uniffi_aethers_checksum_constructor_wallet_new(void
+    
+);
+uint32_t ffi_aethers_uniffi_contract_version(void
+    
+);
+
